@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vps-tcp-tuning: read-only host inspection.
+# netriage: read-only host inspection.
 # Collects the evidence baseline this skill needs before any recommendation.
 # Strictly read-only: no sysctl writes, no tc changes, no file modifications.
 #

@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Renamed the project from `vps-tcp-tuning` to `netriage` (net + triage: assess the path before touching it) to stop shadowing `Eric86777/vps-tcp-tune`; updated the repo name, SKILL.md `name`, README title/clone paths, script headers, and Codex UI metadata. Old GitHub URLs redirect.
 - Restructured the questioning gate into first-round core questions (target, role + path, critical direction, permission boundary), auto-discovered fields, and stage-deferred fields; `permission_boundary` now consistently includes cleanup across SKILL.md and README.
 - Rewrote the frontmatter description with a purpose prefix and wider Chinese trigger coverage (网络优化 / 网络加速 / 开启BBR / 测速慢 / 高重传 / 丢包 etc.); narrowed bare retransmission/throughput/latency to the Linux VPS context.
 - Clarified that installing test tools and opening firewall ports count as changes; temporary rules must be removed in the same run.

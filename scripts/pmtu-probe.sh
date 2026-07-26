@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vps-tcp-tuning: read-only IPv4 PMTU probe toward one peer.
+# netriage: read-only IPv4 PMTU probe toward one peer.
 # Probes a DF-set ping payload ladder; payload + 28 = IPv4 MTU equivalent.
 # Requires Linux iputils ping (-M do). busybox/BSD ping lack that option —
 # there every rung shows FAIL, which means "no data", not a black hole.

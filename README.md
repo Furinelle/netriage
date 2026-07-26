@@ -1,6 +1,8 @@
-# vps-tcp-tuning
+# netriage
 
-一个给 Codex / Claude Code 复用的 VPS TCP / 网络调优 Skill，用于让 agent 按证据检查、测试、推荐并在用户确认后应用 Linux VPS 网络配置。
+> net + triage（分诊）：先评估链路的轻重缓急，拿到证据再决定动不动手。
+
+一个给 Codex / Claude Code 复用的 VPS TCP / 网络调优 Skill（原名 `vps-tcp-tuning`），用于让 agent 按证据检查、测试、推荐并在用户确认后应用 Linux VPS 网络配置。
 
 本 Skill 基于 Lide / iBytebox 的文章整理而来：
 
@@ -55,32 +57,32 @@
 ## 安装到 Codex
 
 ```bash
-git clone https://github.com/Furinelle/vps-tcp-tuning.git ~/.agents/skills/vps-tcp-tuning
+git clone https://github.com/Furinelle/netriage.git ~/.agents/skills/netriage
 ```
 
 如果已经安装过，可以更新：
 
 ```bash
-cd ~/.agents/skills/vps-tcp-tuning
+cd ~/.agents/skills/netriage
 git pull
 ```
 
 ## 安装到 Claude Code
 
 ```bash
-git clone https://github.com/Furinelle/vps-tcp-tuning.git ~/.claude/skills/vps-tcp-tuning
+git clone https://github.com/Furinelle/netriage.git ~/.claude/skills/netriage
 ```
 
 如果已经安装过，可以更新：
 
 ```bash
-cd ~/.claude/skills/vps-tcp-tuning
+cd ~/.claude/skills/netriage
 git pull
 ```
 
 > 若本机 skill 目录是普通文件夹而不是 git clone，可重新 clone 覆盖，或从本仓库拷贝 `SKILL.md`、`references/`、`scripts/`、`templates/`、`agents/`。
 >
-> 升级时不要在 skills 目录下保留旧版本副本（如 `vps-tcp-tuning.bak-*`）：两个描述相近的 skill 会互相竞争触发，模型可能选中旧版。
+> 升级时不要在 skills 目录下保留旧版本副本（如 `netriage.bak-*`）：两个描述相近的 skill 会互相竞争触发，模型可能选中旧版。
 
 ## 前置依赖
 
@@ -95,7 +97,7 @@ git pull
 显式调用：
 
 ```text
-Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safely.
+Use $netriage to inspect and tune my relay or landing VPS networking safely.
 ```
 
 中文直接说也应触发：

@@ -1,10 +1,10 @@
 ---
-name: vps-tcp-tuning
+name: netriage
 description: Evidence-based Linux VPS TCP/network tuning workflow — question, inspect, test, recommend, then apply only after user approval. Use when the user asks to perform TCP tuning, 进行TCP调优, tcp调优, VPS网络调优, BBR调优, 网络优化, 网络加速, 开启BBR, 魔改bbr, bbrplus, 锐速, 调整TCP参数, sysctl优化, 内核参数优化, 测速慢, 下载慢, 高重传, 丢包, 中转机/落地机优化, or to audit, plan, recommend, apply, or verify Linux VPS networking for relay, landing, exit, proxy, or web hosts with SSH access, especially BBR, fq, sysctl, qdisc, MTU/PMTU, iperf3, TBF, HTB, qos-agent, XanMod, workload profiles, Eric86777/vps-tcp-tune, Madhatter2099/TCP-Optimize, one-click bbr scripts, or TCP retransmission/throughput/latency problems on a Linux VPS.
 license: CC-BY-NC-SA-4.0 (derived content; see LICENSE)
 ---
 
-# VPS TCP Tuning
+# netriage — VPS TCP Tuning
 
 ## Overview
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vps-tcp-tuning: pre-change configuration snapshot.
+# netriage: pre-change configuration snapshot.
 # Creates a timestamped backup under /root/network-tuning-<RUN_ID>/pre-change.
 # Run on the target host AFTER the user approves a recommendation and BEFORE
 # writing any persistent change. Copies state; modifies nothing else.
