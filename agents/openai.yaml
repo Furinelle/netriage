@@ -1,6 +1,6 @@
 interface:
   display_name: "VPS TCP Tuning"
-  short_description: "Evidence-based VPS TCP tuning workflow"
+  short_description: "Evidence-based VPS TCP tuning: inspect, test, recommend; apply only after approval"
   default_prompt: "Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safely."
 policy:
   allow_implicit_invocation: true

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-26
+
+### Added
+
+- Rechecked all three upstream sources and recorded baselines for the next recheck:
+  - `Eric86777/vps-tcp-tune` v5.4.4 → v5.4.6 (`44b2870`, 2026-07-23): security hardening only, zero TCP-path changes; the review remains valid, pin ≥ v5.4.6 when running the toolbox.
+  - `Madhatter2099/TCP-Optimize` v2.0 → v2.1 (`c508c1e`, 2026-07-13): added a dated addendum covering the fixed BBRv3 claim, the broken RPS/MSS persistence services (verified: exit 0 without applying anything), the option-8 workload profiles (`ip_forward=1` everywhere, 256 MiB max-throughput buffers, doubled `udp_mem` still in pages), the option-9 benchmark blind spots, and the v2.0→v2.1 `gai.conf` rollback gap.
+  - Blog qos-agent sequel: still unpublished as of 2026-07-26 (noted in `references/blog-method.md`).
+- Added `scripts/` — read-only inspection (`inspect.sh`, `pmtu-probe.sh`) plus a pre-change snapshot writer (`backup-snapshot.sh`) — and `templates/` (`recommendation.md`, `profile.md`); wired them into the SKILL.md workflow. No apply-side scripts by design.
+- Absorbed previously missed source-article details into `references/blog-method.md`: the 5-step MTU decision chain, role-based buffer upper tiers (with the 64 MiB one-click cap tension noted), two extra shaping-ladder criteria (startup behavior; never hurt healthy peers), iperf3 firewall-port patterns, a protocol × knob matrix, a symptom → role mapping, and inline pre-change snapshot / live qdisc read-back blocks in the safe-apply process.
+- Added `.gitignore` for local memory dirs and OS files.
+
+### Changed
+
+- Restructured the questioning gate into first-round core questions (target, role + path, critical direction, permission boundary), auto-discovered fields, and stage-deferred fields; `permission_boundary` now consistently includes cleanup across SKILL.md and README.
+- Rewrote the frontmatter description with a purpose prefix and wider Chinese trigger coverage (网络优化 / 网络加速 / 开启BBR / 测速慢 / 高重传 / 丢包 etc.); narrowed bare retransmission/throughput/latency to the Linux VPS context.
+- Clarified that installing test tools and opening firewall ports count as changes; temporary rules must be removed in the same run.
+- New policy: persistence units must inline concrete commands and be verified after reboot (motivated by TCP-Optimize v2.1's broken units).
+- README: layered questioning list, prerequisites, a schematic run walkthrough, FAQ, upstream version status, and an upgrade note about stale skill copies competing for triggers.
+
 ## 2026-07-22
 
 ### Added

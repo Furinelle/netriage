@@ -10,8 +10,8 @@
 
 并参考了常见一键调优脚本的模块设计（吸收工作流，不照搬参数）：
 
-- [`Madhatter2099/TCP-Optimize`](https://github.com/Madhatter2099/TCP-Optimize)
-- [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune)（`net-tcp-tune.sh` v5.4.4 审阅）
+- [`Madhatter2099/TCP-Optimize`](https://github.com/Madhatter2099/TCP-Optimize)（`tcp.sh` v2.0 完整审阅 + v2.1 增补审阅）
+- [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune)（`net-tcp-tune.sh` v5.4.4 审阅，2026-07-26 复查至 v5.4.6：纯安全加固，TCP 调优逻辑无变化）
 
 > 这个仓库不是“一键复制 sysctl 参数”的清单，也不是 `curl | bash` 包装器。它更像是一套给 AI 运维 agent 使用的工作流：先问清楚链路，再检查，再测试，再给出推荐配置，最后由用户决定是否应用。
 
@@ -41,7 +41,7 @@
 
 ## 核心原则
 
-- 用户说 `tcp调优`、`进行TCP调优`、`VPS网络调优`、`BBR调优` 时，应自动使用这个 Skill。
+- 用户说 `tcp调优`、`进行TCP调优`、`VPS网络调优`、`BBR调优`、`网络优化`、`开启BBR`、`测速慢`/`高重传`排查等时，应自动使用这个 Skill。
 - agent 必须主动询问缺失信息，不能只看主机名猜业务链路。
 - 默认只做检查、测试和推荐，不默认写持久配置。
 - 所有持久配置变更前，必须先给出推荐配置。
@@ -78,7 +78,17 @@ cd ~/.claude/skills/vps-tcp-tuning
 git pull
 ```
 
-> 若本机 skill 目录是普通文件夹而不是 git clone，可重新 clone 覆盖，或从本仓库拷贝 `SKILL.md`、`references/`、`agents/`。
+> 若本机 skill 目录是普通文件夹而不是 git clone，可重新 clone 覆盖，或从本仓库拷贝 `SKILL.md`、`references/`、`scripts/`、`templates/`、`agents/`。
+>
+> 升级时不要在 skills 目录下保留旧版本副本（如 `vps-tcp-tuning.bak-*`）：两个描述相近的 skill 会互相竞争触发，模型可能选中旧版。
+
+## 前置依赖
+
+目标机与测试 peer 上建议具备：
+
+- 基础工具：`iproute2`（`ip`/`ss`/`tc`）、`sysctl`；主流 systemd 发行版（Debian/Ubuntu/RHEL 系）自带
+- 测试工具：`iperf3`（吞吐测试）、`tracepath` 或 `ping`（PMTU）、`ethtool`（可选）
+- 装包本身属于变更：默认权限边界下 agent 会先征求同意再安装 iperf3；为测试临时放行的防火墙端口会在本轮结束时清理
 
 ## 触发方式
 
@@ -108,20 +118,25 @@ Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safel
 
 ## agent 会先问什么
 
-运行这个 Skill 时，agent 应主动询问缺失的关键字段：
+agent 不会一次抛出十几个问题，而是分层询问：
+
+**首轮必问（缺失时）：**
 
 - `target_ssh`：目标机器的 SSH alias 或 SSH 命令
-- `machine_role`：中转、落地、出口、建站、混合节点等
-- `traffic_path`：例如 `用户 -> 中转 -> 落地 -> internet`
+- `machine_role` + `traffic_path`：中转/落地/出口/建站/混合，以及例如 `用户 -> 中转 -> 落地 -> internet`
 - `critical_direction`：用户真正关心的方向，例如下载、上传、视频秒开
-- `proxy_software`：sing-box、xray、realm、gost、Hysteria2、TUIC、nginx、caddy、nftables 等
-- `proxy_protocols`：SS2022、VLESS REALITY、HY2、TUIC、WireGuard、direct web 等
+- `permission_boundary`：只检查 / 允许测试 / 只给计划 / 允许应用；是否允许重启、改 MTU、限速/qos-agent、清理备份日志、跑第三方脚本/换内核
+
+**优先从只读检查自动发现，发现不了再问：**
+
+- `proxy_software` / `proxy_protocols`：sing-box、xray、realm、gost、Hysteria2、TUIC、WireGuard、nginx、caddy、nftables 等
 - `service_ports`：代理、Web、中转、iperf3 等相关端口
-- `advertised_bandwidth`：商家标称带宽或端口速度（Mbps）
-- `service_region` / RTT 档：亚太短延迟 vs 美欧长延迟（影响 buffer 候选）
-- `test_peers`：测试 peer 的标签、地址、iperf3 端口、是否允许 ping、是否能 SSH
-- `peer_lifecycle`：哪些 peer 会长期续费/生产使用，哪些只是临时或即将弃用；持久参数应以长期 peer 为依据
-- `permission_boundary`：只检查、允许测试、只给计划、允许应用、是否允许重启、是否允许改 MTU/限速/qos-agent、是否允许跑第三方脚本/换内核
+
+**到相应阶段再问：**
+
+- 定 buffer 前：`advertised_bandwidth`（已知端口带宽优先于公共测速）、`service_region` / RTT 档（亚太短延迟 vs 美欧长延迟）
+- 测试前：`test_peers`（标签、地址、iperf3 端口、是否允许 ping、是否能 SSH）、`peer_lifecycle`（持久参数以长期续费 peer 为依据）
+- 相关时：Realm 等 L4 中转是否在链路中、是否必须保持双栈
 
 ## 推荐配置再应用
 
@@ -153,6 +168,29 @@ Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safel
 10. 应用前备份并处理 sysctl 冲突；需要 `fq` 时同时处理 live qdisc 与持久化。
 11. 应用后验证 SSH、关键服务、live 参数，并写 profile 与最终报告。
 
+## 一次典型运行的样子
+
+> 以下为流程示意，数值是虚构占位，不是推荐值。
+
+1. 你说：`帮我对 hk-relay 做 TCP 调优`。
+2. agent 问齐首轮四项：目标 SSH、角色 + 链路、关键方向、权限边界。
+3. 只读检查（`scripts/inspect.sh`）：内核 6.1、`bbr` 可用但当前是 `cubic`、根 qdisc 是 `fq_codel`、发现某一键脚本残留的 `99-xxx.conf`。
+4. 逐 peer 测试：PMTU 1500 干净；iperf3 到长期落地机反向 P1 只有 180 Mbps、重传 2.1%，本机 qdisc drop 为 0。
+5. 给出推荐 bundle（按 `templates/recommendation.md` 六段式）：BBR + fq、buffer 按 BDP 给候选值、列明不改 MTU / 不限速的理由、附验证与回滚方案。
+6. 你说"按推荐应用"后，agent 先跑 `scripts/backup-snapshot.sh` 快照，再写入配置、读回 live 状态、复测关键方向、落 profile。
+
+## FAQ
+
+**会不会直接改我的服务器？** 不会。默认边界是只检查 + 测试 + 给推荐；所有持久变更必须先给出推荐配置，等你明确说"按推荐应用"。
+
+**目标机需要装什么？** 见"前置依赖"。装 iperf3 这类包也算变更，agent 会先问。
+
+**对 HY2 / TUIC 这类 UDP 协议有用吗？** 分层看：外层 UDP/QUIC 不吃 Linux TCP buffer，但 MTU、qdisc、CPU 调度、出口 shaping 仍有影响；VPS 作为出口访问网站时，出口 TCP 仍受 BBR/buffer/PMTU 影响。
+
+**和一键脚本什么区别？** 一键脚本按预设参数直接写；这个 Skill 先测你的真实链路，给出带证据和回滚方案的推荐，参数是从测量推出来的候选值。两个被审阅脚本的可取思路已按"候选 + 证据门"吸收，激进副作用被明确拒绝。
+
+**为什么推荐配置里有很多"不改"项？** 不改也是结论。例如 PMTU 干净就不动 MTU；本机 qdisc 无 drop 的高重传不该用限速掩盖。
+
 ## 实战经验更新
 
 2026-07-09 对 `dmit-lax` 做 TCP/UDP 调优后，补充了几条更强约束：
@@ -171,7 +209,9 @@ Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safel
 
 不直接通用化：总内存 5% buffer、`udp_mem` 当字节、盲目 IPv4 优先 / RPS / conntrack / MSS / 百万 nofile、用内核版本推断 BBRv3、把 `cubic+fq_codel` 当万能回滚默认值。
 
-完整审阅见 [`references/tcp-optimize-review.md`](references/tcp-optimize-review.md)。
+版本状态：v2.0（`e43b4ba`）完整审阅；v2.1（`c508c1e`，2026-07-13 重写）已复查增补——上游修正了 BBRv3 版本误判，但新增的 RPS/MSS systemd 持久化服务经实测是坏的（开机假成功、什么都没应用），4 个工作负载模板对所有角色无条件开 `ip_forward`，"最大吞吐"模板无视内存直接写 256MB buffer。
+
+完整审阅见 [`references/tcp-optimize-review.md`](references/tcp-optimize-review.md)（含 2026-07-26 v2.1 增补节）。
 
 ### Eric86777/vps-tcp-tune
 
@@ -191,6 +231,8 @@ Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safel
 - 无压力证据就写死 `nf_conntrack_max=262144`
 - 无双栈对比就永久禁用 IPv6
 
+版本状态：v5.4.4 完整审阅；2026-07-26 复查至 v5.4.6——两个新版本均为安全加固（临时文件 mktemp 化、菜单 32-7 代理鉴权），菜单 3 / buffer 阶梯 / 产物文件零变化，审阅结论对 v5.4.6 仍然有效。若要运行上游工具箱本体，建议 pin ≥ v5.4.6。
+
 完整审阅见 [`references/vps-tcp-tune-review.md`](references/vps-tcp-tune-review.md)。
 
 ## 仓库结构
@@ -200,8 +242,15 @@ Use $vps-tcp-tuning to inspect and tune my relay or landing VPS networking safel
 ├── SKILL.md                         # Skill 主说明
 ├── references/
 │   ├── blog-method.md               # 从原文整理出的详细方法和命令模式
-│   ├── tcp-optimize-review.md       # 对 TCP-Optimize 的证据化参考与边界
+│   ├── tcp-optimize-review.md       # 对 TCP-Optimize 的证据化参考与边界（含 v2.1 增补）
 │   └── vps-tcp-tune-review.md       # 对 Eric86777/vps-tcp-tune 的审阅与候选表
+├── scripts/
+│   ├── inspect.sh                   # 只读检查采集（可经 SSH 远程执行）
+│   ├── pmtu-probe.sh                # PMTU 阶梯探测（只读）
+│   └── backup-snapshot.sh           # 应用前全量配置快照
+├── templates/
+│   ├── recommendation.md            # 推荐配置六段式模板
+│   └── profile.md                   # 调优 profile 模板
 ├── agents/
 │   └── openai.yaml                  # Codex UI metadata
 ├── CHANGELOG.md                     # 更新日志

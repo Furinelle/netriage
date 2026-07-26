@@ -2,6 +2,8 @@
 
 Source reviewed: [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune), main script `net-tcp-tune.sh` **v5.4.4** (commit pin the tree you download; this review follows the 2026-07-22 main tip), reviewed 2026-07-22.
 
+Recheck 2026-07-26: upstream is now **v5.4.6** (`44b2870`, 2026-07-23). v5.4.5/v5.4.6 are security hardening only — `mktemp`-randomized temp files for the Xray/sing-box/cloudflared/China-IP downloads and access-key auth for the menu 32-7 Responses proxy — with zero changes to menu 3, the buffer ladder, sysctl values, the Realm fix, menu 66, or the owned artifacts. Everything below remains accurate for v5.4.6.
+
 Use these notes when a user asks to copy, compare, audit, or run that script, or mentions `bbr` one-click, XanMod + BBRv3 menus, menu `3`/`66`, Realm timeout fix, or “一键全自动优化”. They are a static review of the cited revision; re-inspect the current upstream file before acting.
 
 This skill must **not** become a silent wrapper around `curl | bash net-tcp-tune.sh`. Extract reusable workflow ideas, keep evidence gates, and prefer recommendation-before-apply.
@@ -212,7 +214,7 @@ ls /etc/sysctl.d/*disable-ipv6* 2>/dev/null
 | RPS/RFS | Multi-vCPU, softnet/IRQ concentration, insufficient RSS |
 | Realm/conntrack pack | Realm (or heavy NAT relay) present; conntrack pressure |
 | Disable IPv6 / force IPv4 | Dual-stack comparison; no IPv6-only dependency |
-| Run upstream script as-is | User explicitly wants the toolbox; pin version; full backup; list side effects (DNS, IPv6, proxy menus) |
+| Run upstream script as-is | User explicitly wants the toolbox; pin version (**≥ v5.4.6** — earlier versions used predictable `/tmp` paths for downloaded payloads, a local symlink-attack surface); full backup; list side effects (DNS, IPv6, proxy menus) |
 
 ## Primary References
 
