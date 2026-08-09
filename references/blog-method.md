@@ -20,6 +20,7 @@ Collect or ask for:
 | `service_region` / RTT class | Asia/short-RTT vs overseas/long-RTT; selects BDP-informed buffer *candidates* (see `vps-tcp-tune-review.md`). |
 | `test_peers` | Peer label, IP/host, iperf3 port, ICMP, SSH, role. |
 | `peer_lifecycle` | Long-term/renewing peers should drive persistent tuning; soon-to-expire hosts may be tested for observation but should not dominate decisions. |
+| `test_budget_gb` / window | Bound high-rate probes and sweeps by quota, billing period, and peak/off-peak timing. |
 | `permission_boundary` | Inspect, test, recommend, apply, reboot, MTU, shaping, cleanup, third-party script/kernel swap. Persistent apply still requires explicit approval of the recommendation. |
 
 If these are missing, ask before remote work. If the user already provided some fields, ask only for the missing/high-risk ones. Ask the first-round core first (target, role + path, critical direction, permission boundary); defer bandwidth/region to the buffer-sizing stage and peers/lifecycle to the test stage, and auto-discover proxy software/protocols/ports from read-only inspection when possible (see the layered gate in `SKILL.md`).
@@ -67,6 +68,13 @@ find /sys/class/net/<dev>/queues -maxdepth 2 \
 
 Run peers sequentially. Snapshot qdisc/TCP counters before and after each test window. If the peer inventory includes soon-to-expire or throwaway VPSs, test them only when they help diagnose reachability; base persistent sysctl/qdisc/MTU/shaping decisions on the durable peers that match the user's real traffic path.
 
+Before a bandwidth probe or shaping sweep, estimate the lower-bound transfer
+volume and compare it with `test_budget_gb`; include retries, baseline, reverse,
+and verification overhead. A nearby high-capacity peer answers “where is the VPS
+port/policer knee,” while durable business-path peers answer “what improves the
+real service.” Keep those roles separate. For the detailed tcpfit-derived sweep
+method and its qdisc-restoration limits, read `tcpfit-review.md`.
+
 PMTU ladder for IPv4:
 
 ```bash
@@ -82,10 +90,14 @@ done
 iperf3 pattern; adapt direction to user-critical path:
 
 ```bash
-iperf3 -c <peer> -p <port> -t 12 -O 2 -P 1 -J
-iperf3 -c <peer> -p <port> -t 12 -O 2 -P 4 -J
-iperf3 -c <peer> -p <port> -t 12 -O 2 -P 1 -R -J
-iperf3 -c <peer> -p <port> -t 12 -O 2 -P 4 -R -J
+scripts/measure-window.sh --route-target <peer> --label p1-fwd -- \
+  iperf3 -c <peer> -p <port> -t 12 -O 2 -P 1 -J
+scripts/measure-window.sh --route-target <peer> --label p4-fwd -- \
+  iperf3 -c <peer> -p <port> -t 12 -O 2 -P 4 -J
+scripts/measure-window.sh --route-target <peer> --label p1-rev -- \
+  iperf3 -c <peer> -p <port> -t 12 -O 2 -P 1 -R -J
+scripts/measure-window.sh --route-target <peer> --label p4-rev -- \
+  iperf3 -c <peer> -p <port> -t 12 -O 2 -P 4 -R -J
 ```
 
 Record bitrate, retransmits, cwnd/RTT clues, startup behavior, single-flow vs multi-flow differences, qdisc drops/backlog deltas, and TCP retransmission counter deltas.
@@ -149,7 +161,7 @@ Symptom → role hint: high-concurrency forwarding loss and queue backlog point 
 - BBR/fq: prefer when available and appropriate; use bbr3 only if exposed by kernel. After recommending `default_qdisc=fq`, verify the **live** root qdisc and plan reboot persistence (`tc qdisc replace` + systemd/networkd).
 - Buffers: estimate from bandwidth-delay product, memory, role, concurrency, and service_region. Rough BDP bytes ≈ `Mbps × RTT_ms × 125`. Use Asia/overseas ladders in `vps-tcp-tune-review.md` as candidates (overseas often larger, commonly capped near 64 MiB); small RAM hosts stay conservative. Prefer known port speed over public speedtests when they disagree. The source article's role tiers are upper-bound candidates: conservative caps for 100M relays; 64–128 MiB for 1G relay/landing when RTT and memory support it; 128–256 MiB only for high-bandwidth long-RTT landing hosts with BDP and retransmit evidence. Where this clashes with the one-click 64 MiB overseas cap, prefer the smaller value unless measured BDP, ample free RAM, and clean loss data justify more.
 - MTU: walk the decision chain in order — (1) is the public interface currently 1500; (2) is PMTU to durable peers clean; (3) is a tunnel/WireGuard/overlay/nested proxy in the path; (4) is the real protocol TCP or UDP/QUIC; (5) is there fragmentation/black-hole/retransmit/QUIC-loss evidence. Keep 1500 when clean. Consider 1450-1460 for mild tunnel/provider overhead, or 1400-1440 for nested encapsulation/consumer ISP/UDP paths, only with evidence. Prefer `tcp_mtu_probing` (TCP-only) over cargo-cult interface MTU 1440 when black holes are TCP-specific.
-- HTB/TBF: test practical stable uplink with 95/90/85/80/75% ladder. Choose the highest cap that lowers retransmits/drops without harming critical throughput; improved short-connection/web/video startup behavior also counts in favor of a cap. Shaping must only affect the weak peer(s) — if healthy peers lose throughput, the cap is too low or the bottleneck is not local egress; raise or remove it. Keep fq as the child qdisc.
+- HTB/TBF: test practical stable uplink with a repeated ladder. A provider-policer knee may sit above unpaced goodput, but only a capable nearby peer and reproducible transition can establish that. Choose the highest cap that lowers retransmits/drops without harming critical throughput; improved short-connection/web/video startup behavior also counts in favor of a cap. Shaping must only affect the weak peer(s) — if healthy peers lose throughput, the cap is too low or the bottleneck is not local egress; raise or remove it. Keep fq as the child qdisc. “No observed knee” means no cap, not “use the scan ceiling.”
 - qos-agent: reserve for adaptive per-peer/per-port/per-source control; do not deploy by default.
 - IPv4 preference: compare real IPv4 and IPv6 service paths first. `/etc/gai.conf` changes libc address selection; it does not rewrite DNS responses. Do not permanently disable IPv6 as a default optimize step.
 - Conntrack: inspect whether the host actually traverses NAT/firewall conntrack and compare `nf_conntrack_count` with the limit. Do not derive table size from RAM alone or hardcode popular script values.
@@ -160,7 +172,7 @@ Symptom → role hint: high-concurrency forwarding loss and queue backlog point 
 - Endpoint extras (`tcp_notsent_lowat`, keepalive, `tcp_fin_timeout`, TFO): optional for landing/proxy TCP termination; not universal for pure L4 relays.
 - Realm/L4 relay extras: only when that software is present (conntrack pressure, nodelay/reuse_port, unit `LimitNOFILE`).
 
-For a detailed audit of the ideas and failure modes in `Madhatter2099/TCP-Optimize`, read `tcp-optimize-review.md`. For `Eric86777/vps-tcp-tune` (XanMod/BBRv3 one-click, menu 3/66, Realm fix), read `vps-tcp-tune-review.md`.
+For a detailed audit of the ideas and failure modes in `Madhatter2099/TCP-Optimize`, read `tcp-optimize-review.md`. For `Eric86777/vps-tcp-tune` (XanMod/BBRv3 one-click, menu 3/66, Realm fix), read `vps-tcp-tune-review.md`. For `Kylin010/tcpfit` (BDP/RAM candidate math, test-volume estimation, port-policer sweep, qdisc restore caveats), read `tcpfit-review.md`.
 
 ## Recommendation and Safe Apply Process
 

@@ -18,6 +18,8 @@ accidentally execute rollback-looking commands.
 - Advertised bandwidth and its source:
 - Service region / RTT class:
 - Durable peers that drove decisions (and temporary peers deliberately excluded):
+- Nearby capacity/policer peer, if any (do not conflate with durable path peers):
+- Approved test budget/window and actual interface-byte delta:
 
 ## Tests
 
@@ -28,6 +30,7 @@ accidentally execute rollback-looking commands.
 
 - File(s) written:
 - Chosen values with one-line reasoning each:
+- Candidate derivation inputs/output and the limiting cap (BDP / RAM / concurrency):
 - Live actions (tc replace, MSS clamp, RPS, initcwnd):
 - Persistence mechanism:
 

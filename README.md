@@ -14,6 +14,7 @@
 
 - [`Madhatter2099/TCP-Optimize`](https://github.com/Madhatter2099/TCP-Optimize)（`tcp.sh` v2.0 完整审阅 + v2.1 增补审阅）
 - [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune)（`net-tcp-tune.sh` v5.4.4 审阅，2026-07-26 复查至 v5.4.6：纯安全加固，TCP 调优逻辑无变化）
+- [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit)（v0.3.8 / `5671da0` 源码审阅：吸收 BDP/RAM 推导账本、测试流量预算和 policer 拐点实验方法，不运行其自动调优）
 
 > 这个仓库不是“一键复制 sysctl 参数”的清单，也不是 `curl | bash` 包装器。它更像是一套给 AI 运维 agent 使用的工作流：先问清楚链路，再检查，再测试，再给出推荐配置，最后由用户决定是否应用。
 
@@ -51,6 +52,9 @@
 - 不把 `MTU 1440`、`TBF 1000Mbit`、固定大 buffer、一键菜单默认值当万能答案。
 - 缓冲区按 BDP、并发、内存、角色和 `service_region` 估算；公共 speedtest 只作参考，已知端口带宽优先。
 - 测试 peer 必须逐个测试，不默认并发压测；持久参数以长期 peer 为依据。
+- 高速 probe/sweep 前先估算流量和时间，确认配额/账期/测试窗口；测试后报告接口字节 delta。
+- 附近高容量 peer 用来测端口/policer，长期业务 peer 用来决定持久配置，两者不能混为一谈。
+- 临时替换根 qdisc 前必须证明能恢复完整 class/filter/参数；只记 qdisc 类型不算回滚。
 - 必须保留备份、验证步骤和回滚路径。
 - 不静默执行第三方一键脚本或 menu 66 式连锁副作用。
 
@@ -90,6 +94,7 @@ git pull
 
 - 基础工具：`iproute2`（`ip`/`ss`/`tc`）、`sysctl`；主流 systemd 发行版（Debian/Ubuntu/RHEL 系）自带
 - 测试工具：`iperf3`（吞吐测试）、`tracepath` 或 `ping`（PMTU）、`ethtool`（可选）
+- 本地候选计算：Python 3（仅 `scripts/derive-candidates.py` 使用，不需要第三方包）
 - 装包本身属于变更：默认权限边界下 agent 会先征求同意再安装 iperf3；为测试临时放行的防火墙端口会在本轮结束时清理
 
 ## 触发方式
@@ -118,6 +123,10 @@ Use $netriage to inspect and tune my relay or landing VPS networking safely.
 按 Eric 那个 bbr 脚本的思路，帮我推荐落地机参数（先别改）。
 ```
 
+```text
+参考 tcpfit 的方法，测一下这台 VPS 有没有端口限速器拐点，先给测试预算和方案。
+```
+
 ## agent 会先问什么
 
 agent 不会一次抛出十几个问题，而是分层询问：
@@ -127,7 +136,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 - `target_ssh`：目标机器的 SSH alias 或 SSH 命令
 - `machine_role` + `traffic_path`：中转/落地/出口/建站/混合，以及例如 `用户 -> 中转 -> 落地 -> internet`
 - `critical_direction`：用户真正关心的方向，例如下载、上传、视频秒开
-- `permission_boundary`：只检查 / 允许测试 / 只给计划 / 允许应用；是否允许重启、改 MTU、限速/qos-agent、清理备份日志、跑第三方脚本/换内核
+- `permission_boundary`：只检查 / 允许测试 / 只给计划 / 允许应用；是否允许重启、改 MTU、临时替换根 qdisc、限速/qos-agent、清理备份日志、跑第三方脚本/换内核
 
 **优先从只读检查自动发现，发现不了再问：**
 
@@ -137,7 +146,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 **到相应阶段再问：**
 
 - 定 buffer 前：`advertised_bandwidth`（已知端口带宽优先于公共测速）、`service_region` / RTT 档（亚太短延迟 vs 美欧长延迟）
-- 测试前：`test_peers`（标签、地址、iperf3 端口、是否允许 ping、是否能 SSH）、`peer_lifecycle`（持久参数以长期续费 peer 为依据）
+- 测试前：`test_peers`（标签、地址、iperf3 端口、是否允许 ping、是否能 SSH）、`peer_lifecycle`（持久参数以长期续费 peer 为依据）、`test_budget_gb` 与配额/账期/峰谷窗口
 - 相关时：Realm 等 L4 中转是否在链路中、是否必须保持双栈
 
 ## 推荐配置再应用
@@ -146,7 +155,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 推荐配置至少应包含：
 
-- 证据摘要：角色、关键链路、PMTU、带宽/RTT 档、iperf/counter delta、瓶颈判断
+- 证据摘要：角色、关键链路、peer 用途/生命周期、测试流量、PMTU、带宽/RTT 档、iperf/counter delta、瓶颈判断
 - 精确候选配置：拟写入的 `/etc/sysctl.d/*.conf` 内容
 - 可能的 qdisc / systemd / MTU / qos-agent / initcwnd / RPS 命令或 unit
 - 不建议修改的项目和理由（含一键脚本的激进副作用）
@@ -161,14 +170,15 @@ agent 不会一次抛出十几个问题，而是分层询问：
 1. 主动询问缺失上下文。
 2. 只读检查主机：OS、kernel、CPU、内存、接口、MTU、路由、socket、sysctl、qdisc、服务进程；识别是否已有一键脚本产物（如 `99-bbr-ultimate.conf`、`bbr-optimize-persist.service`）。
 3. 读取已有 `/etc/sysctl.conf`、`/etc/sysctl.d/*.conf` 和 `*.profile.md`。
-4. 识别长期 peer 和临时/即将弃用 peer；持久调优参数以长期 peer 为依据。
-5. 逐个 peer 做 PMTU、ping、iperf3 P1/P4 正向/反向测试。
-6. 记录测试窗口内 qdisc drop/backlog 和 TCP retransmission delta。
-7. 按中转/落地/出口/Web 角色解释结果；用 BDP 与地区表估算 buffer **候选**。
-8. 给出推荐配置和不改项。
-9. 等用户确认。
-10. 应用前备份并处理 sysctl 冲突；需要 `fq` 时同时处理 live qdisc 与持久化。
-11. 应用后验证 SSH、关键服务、live 参数，并写 profile 与最终报告。
+4. 区分附近高容量 peer、长期业务 peer、临时/即将弃用 peer；持久参数以匹配真实路径的长期 peer 为依据。
+5. 先估算测试流量，再逐 peer 做 PMTU、ping、iperf3 P1/P4 正向/反向测试。
+6. 用 `scripts/measure-window.sh` 记录接口字节、qdisc、softnet 和 TCP counter delta。
+7. 按中转/落地/出口/Web 角色解释结果；用 `scripts/derive-candidates.py` 输出 BDP、内存/并发上限和截断原因。
+8. 只有在 nearby peer 足够快、拐点可重复且 qdisc 能精确恢复时，才设计 policer sweep；无稳定 knee 就不整形。
+9. 给出推荐配置和不改项。
+10. 等用户确认。
+11. 应用前备份并处理 sysctl 冲突；需要 `fq` 时同时处理 live qdisc 与持久化。
+12. 应用后验证 SSH、关键服务、live 参数，并写 profile 与最终报告。
 
 ## 一次典型运行的样子
 
@@ -189,11 +199,18 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 **对 HY2 / TUIC 这类 UDP 协议有用吗？** 分层看：外层 UDP/QUIC 不吃 Linux TCP buffer，但 MTU、qdisc、CPU 调度、出口 shaping 仍有影响；VPS 作为出口访问网站时，出口 TCP 仍受 BBR/buffer/PMTU 影响。
 
-**和一键脚本什么区别？** 一键脚本按预设参数直接写；这个 Skill 先测你的真实链路，给出带证据和回滚方案的推荐，参数是从测量推出来的候选值。两个被审阅脚本的可取思路已按"候选 + 证据门"吸收，激进副作用被明确拒绝。
+**和一键脚本什么区别？** 一键脚本按预设参数直接写；这个 Skill 先测你的真实链路，给出带证据和回滚方案的推荐，参数是从测量推出来的候选值。被审阅工具的可取思路已按"候选 + 证据门"吸收，激进副作用和不完整回滚被明确拦住。
 
 **为什么推荐配置里有很多"不改"项？** 不改也是结论。例如 PMTU 干净就不动 MTU；本机 qdisc 无 drop 的高重传不该用限速掩盖。
 
 ## 实战经验更新
+
+2026-08-09 参考 tcpfit v0.3.8 后新增：
+
+- **推导账本**：buffer 推荐必须显示 BDP、2×BDP、RAM/并发 cap、最终值和截断原因；`tcp_mem` 必须按目标机 page size 展示，不能把页当字节。
+- **测试成本门**：probe/sweep 前估算流量下界并确认配额与窗口，测试后用接口 RX/TX delta 报实际消耗（注明同接口业务流量会污染计量）。
+- **policer 实验法**：先验证 nearby peer 能力，疑似跳变要重复，粗扫后细扫；扫描范围干净时结论是“本次未观察到 knee”，不是把上界当成整形值。
+- **qdisc 事务安全**：tcpfit v0.3.8 只按 qdisc kind 恢复，自动 sweep 还存在状态清空后遗留临时 HTB 的路径；生产机不运行该版本 auto-sweep，复杂 qdisc 无精确恢复方案就不替换。
 
 2026-07-09 对 `dmit-lax` 做 TCP/UDP 调优后，补充了几条更强约束：
 
@@ -204,6 +221,25 @@ agent 不会一次抛出十几个问题，而是分层询问：
 - **限速要有本机出口证据**：高重传但本机 egress qdisc drop/backlog 为 0 时，不应默认落盘 HTB/TBF/qos-agent。
 
 ## 对第三方一键脚本的参考
+
+### Kylin010/tcpfit
+
+吸收（作为实验设计，不直接运行 v0.3.8 自动调优）：
+
+- BDP × RAM × 角色的透明候选计算，并展示被哪个 cap 截断
+- probe/sweep 前的流量预算与测试后的接口字节计量
+- 附近容量 peer 与真实业务 durable peer 分工
+- 疑似 policer 拐点重复确认、粗扫 + 细扫、无 knee 不整形
+- 参数先校验、破坏性测试加互斥锁和中断清理、变更清单与回滚清单对称
+
+明确拦截：
+
+- v0.3.8 的 `qdisc_save` 只保存类型，不能恢复 HTB class/filter/自定义参数
+- 自动 sweep 在不限速探测后清空保存状态，后续退出路径可能遗留最后一档临时 HTB
+- snapshot 中 route/qdisc 只是注释，rollback 不能据此精确还原
+- 固定中国 RTT 目标、4 KiB page 假设、`0.1%`/1448 MSS loss proxy、固定 margin/quantum/burst/flow_limit、全套 30+ sysctl、无条件 initcwnd 32
+
+完整审阅见 [`references/tcpfit-review.md`](references/tcpfit-review.md)。仓库 pin：v0.3.8 / `5671da0`（2026-08-09）。
 
 ### Madhatter2099/TCP-Optimize
 
@@ -244,11 +280,14 @@ agent 不会一次抛出十几个问题，而是分层询问：
 ├── SKILL.md                         # Skill 主说明
 ├── references/
 │   ├── blog-method.md               # 从原文整理出的详细方法和命令模式
+│   ├── tcpfit-review.md             # tcpfit v0.3.8 的推导/拐点方法与 qdisc 风险审阅
 │   ├── tcp-optimize-review.md       # 对 TCP-Optimize 的证据化参考与边界（含 v2.1 增补）
 │   └── vps-tcp-tune-review.md       # 对 Eric86777/vps-tcp-tune 的审阅与候选表
 ├── scripts/
 │   ├── inspect.sh                   # 只读检查采集（可经 SSH 远程执行）
 │   ├── pmtu-probe.sh                # PMTU 阶梯探测（只读）
+│   ├── derive-candidates.py         # BDP/RAM/角色候选与 sweep 流量下界计算
+│   ├── measure-window.sh            # 单次测试前后接口/qdisc/TCP counter delta
 │   └── backup-snapshot.sh           # 应用前全量配置快照
 ├── templates/
 │   ├── recommendation.md            # 推荐配置六段式模板

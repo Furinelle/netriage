@@ -8,11 +8,18 @@ then STOP and wait for explicit approval before any persistent change.
 
 - Role and traffic path:
 - Critical direction:
+- Peer purpose/lifecycle (nearby capacity peer vs durable business-path peer):
+- Approved test budget/window and measured bytes transferred:
 - Bandwidth / RTT class (source: known port speed | speedtest | measured):
 - PMTU findings:
 - iperf3 results per durable peer (P1/P4, forward/reverse, retransmits):
 - qdisc drop/backlog and TCP counter deltas during test windows:
 - Bottleneck interpretation:
+- Candidate derivation ledger (`scripts/derive-candidates.py`):
+
+| Item | Inputs / formula | Raw candidate | Safety cap | Final candidate | Limiting factor |
+| --- | --- | ---: | ---: | ---: | --- |
+| BDP / socket max / default / tcp_mem | | | | | |
 
 ## 2. Exact candidate configuration
 
@@ -46,6 +53,7 @@ Non-changes are conclusions too; list every knob considered and dropped.
 ## 5. Verification plan
 
 - Live read-back (congestion control, root qdisc on the egress dev, buffer bytes):
+- Exact qdisc/class/filter restoration check when temporary replacement was used:
 - Retests to run (same peers/directions as baseline):
 
 ## 6. Rollback plan

@@ -5,9 +5,11 @@
 #
 # Usage:
 #   ssh <host> bash -s < scripts/inspect.sh
+#   ssh <host> bash -s -- <route-target> < scripts/inspect.sh
 #   bash scripts/inspect.sh            # on the host itself
 
 set -u
+route_target=${1:-1.1.1.1}
 
 section() { printf '\n===== %s =====\n' "$*"; }
 
@@ -23,6 +25,9 @@ hostname
 uname -r
 head -5 /etc/os-release 2>/dev/null
 uptime
+virt=$(systemd-detect-virt 2>/dev/null || true)
+printf 'virtualization: %s\n' "${virt:-none/unknown}"
+printf 'page size: '; getconf PAGE_SIZE 2>/dev/null || getconf PAGESIZE 2>/dev/null || echo unknown
 
 section "cpu / memory"
 lscpu 2>/dev/null | sed -n '1,20p'
@@ -34,11 +39,14 @@ section "interfaces / routes"
 ip -br addr show
 ip route show
 ip -6 route show 2>/dev/null | head -20
-ip -o route get 1.1.1.1 2>/dev/null || true
+printf 'route target: %s\n' "$route_target"
+ip -o route get "$route_target" 2>/dev/null || true
 
 section "sockets"
 ss -s
 ss -tlnp 2>/dev/null | head -40
+cat /proc/net/sockstat 2>/dev/null || true
+cat /proc/net/sockstat6 2>/dev/null || true
 
 section "tcp sysctl"
 show_sysctl \
@@ -46,22 +54,47 @@ show_sysctl \
   net.ipv4.tcp_congestion_control \
   net.core.default_qdisc \
   net.core.rmem_max net.core.wmem_max \
+  net.core.rmem_default net.core.wmem_default \
   net.ipv4.tcp_rmem net.ipv4.tcp_wmem \
+  net.ipv4.tcp_mem net.ipv4.tcp_moderate_rcvbuf \
+  net.ipv4.tcp_window_scaling net.ipv4.tcp_adv_win_scale \
   net.core.somaxconn net.ipv4.tcp_max_syn_backlog \
-  net.core.netdev_max_backlog \
+  net.core.netdev_max_backlog net.core.netdev_budget \
+  net.core.netdev_budget_usecs net.core.optmem_max \
   net.ipv4.tcp_notsent_lowat net.ipv4.tcp_fastopen \
   net.ipv4.tcp_ecn net.ipv4.tcp_syncookies \
   net.ipv4.tcp_mtu_probing net.ipv4.tcp_slow_start_after_idle \
+  net.ipv4.tcp_no_metrics_save net.ipv4.tcp_sack \
+  net.ipv4.tcp_dsack net.ipv4.tcp_timestamps \
   net.ipv4.tcp_fin_timeout net.ipv4.tcp_tw_reuse \
+  net.ipv4.tcp_keepalive_time net.ipv4.ip_local_port_range \
   net.ipv4.ip_forward net.ipv6.conf.all.forwarding \
   net.ipv6.conf.all.disable_ipv6 \
-  net.ipv4.udp_rmem_min net.ipv4.udp_wmem_min net.ipv4.udp_mem
+  net.ipv4.udp_rmem_min net.ipv4.udp_wmem_min net.ipv4.udp_mem \
+  vm.min_free_kbytes vm.swappiness fs.file-max
 
 section "live qdisc (root qdisc on egress, not just default_qdisc)"
-dev=$(ip -o route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
+dev=$(ip -o route get "$route_target" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
 echo "egress dev: ${dev:-<unknown>}"
 tc -s qdisc show
 if [ -n "${dev:-}" ]; then
+  section "egress interface evidence"
+  ip -s link show dev "$dev" 2>/dev/null
+  ethtool -i "$dev" 2>/dev/null
+  printf 'link speed: '; cat "/sys/class/net/$dev/speed" 2>/dev/null || echo unknown
+  printf 'rx queues: '; find "/sys/class/net/$dev/queues" -maxdepth 1 -type d -name 'rx-*' 2>/dev/null | wc -l | tr -d ' '
+  printf 'tx queues: '; find "/sys/class/net/$dev/queues" -maxdepth 1 -type d -name 'tx-*' 2>/dev/null | wc -l | tr -d ' '
+  for stat in rx_bytes tx_bytes rx_packets tx_packets rx_dropped tx_dropped; do
+    printf '%s: ' "$stat"
+    cat "/sys/class/net/$dev/statistics/$stat" 2>/dev/null || echo unknown
+  done
+
+  section "full qdisc topology (JSON when supported)"
+  tc -j -s qdisc show dev "$dev" 2>/dev/null || true
+  tc -j -s class show dev "$dev" 2>/dev/null || true
+  tc -j -s filter show dev "$dev" 2>/dev/null || true
+
+  section "qdisc classes / filters / offloads"
   tc -s class show dev "$dev" 2>/dev/null
   tc filter show dev "$dev" 2>/dev/null
   ethtool -k "$dev" 2>/dev/null | grep -E 'segmentation|offload' | head -10
@@ -100,6 +133,13 @@ ls -la /etc/sysctl.d/10-bbr.conf /etc/sysctl.d/99-network-performance.conf \
   /usr/local/bin/tcp.sh 2>/dev/null
 systemctl is-enabled rps-optimize.service 2>/dev/null
 systemctl is-enabled mss-clamp.service 2>/dev/null
+# Kylin010/tcpfit (and its former nettune name)
+ls -la /etc/sysctl.d/99-tcpfit.conf /etc/modules-load.d/tcpfit-bbr.conf \
+  /etc/systemd/system/tcpfit-qdisc.service /usr/local/sbin/tcpfit-qdisc.sh \
+  /etc/networkd-dispatcher/routable.d/50-tcpfit-initcwnd \
+  /var/lib/tcpfit /etc/sysctl.d/99-nettune.conf \
+  /etc/systemd/system/nettune-qdisc.service /var/lib/nettune 2>/dev/null
+systemctl is-enabled tcpfit-qdisc.service 2>/dev/null
 grep -n 'precedence ::ffff:0:0/96' /etc/gai.conf 2>/dev/null
 # iptables-save only walks already-loaded tables; a plain `iptables -t mangle -S`
 # would auto-load the mangle module and break the read-only promise

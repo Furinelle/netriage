@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-09
+
+### Added
+
+- Reviewed [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit) v0.3.8 (`5671da0`) from source and added `references/tcpfit-review.md`. Reused its transparent BDP/RAM/role derivation ledger, test-traffic budgeting, peer-purpose split, repeated coarse/fine policer-knee experiment, and no-knee/no-shaper rule as evidence-gated methods.
+- Added `scripts/derive-candidates.py`, a no-mutation JSON calculator for BDP, 2×BDP, RAM/concurrency caps, role defaults, page-aware `tcp_mem` candidates, and linear sweep payload estimates.
+- Added `scripts/measure-window.sh`, a measurement-only wrapper that reports interface bytes, TCP retrans/out-segment, qdisc, and softnet deltas around one approved test command.
+- Extended recommendation/profile templates with peer purpose, approved/actual test volume, derivation provenance, and qdisc restoration verification.
+
+### Changed
+
+- Added an explicit high-volume test budget/window gate and separated nearby capacity/policer peers from durable business-path peers.
+- Strengthened qdisc safety: serialize temporary replacements, capture the authoritative topology owner, require exact class/filter/parameter restoration, and avoid destructive sweeps when only a qdisc kind is recoverable.
+- Expanded `scripts/inspect.sh` with optional route-target selection, page size, virtualization, link/queue/interface counters, socket stats, page-sensitive sysctls, JSON qdisc topology, and tcpfit/nettune artifact discovery.
+- Hardened `scripts/backup-snapshot.sh` with per-run earliest-snapshot retention, an optional planned-path state/metadata manifest, route/qdisc JSON and class/filter evidence, tcpfit/nettune artifacts, interface/TCP counters, checksums, and a completion marker.
+- Updated the SKILL trigger and docs for tcpfit, BDP calculation, policer/knee/sweep requests; removed the nonstandard `license` frontmatter key so only `name` and `description` remain.
+
+### Safety findings
+
+- tcpfit v0.3.8 does not provide exact qdisc/route rollback: it saves only the qdisc kind, and automatic sweep can clear the saved interface before later test HTB steps, leaving a temporary shaper on some exit paths. netriage therefore documents the method but does not run or wrap the upstream auto-sweep on production hosts.
+- tcpfit's fixed RTT targets, 4 KiB page assumption, retransmission-derived `0.1%` loss proxy, margin tiers, HTB/fq constants, broad sysctl set, and initcwnd 32 remain candidates behind independent evidence gates.
+
 ## 2026-07-26
 
 ### Added

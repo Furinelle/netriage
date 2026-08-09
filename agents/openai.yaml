@@ -1,6 +1,4 @@
 interface:
   display_name: "netriage (VPS TCP Tuning)"
-  short_description: "Evidence-based VPS TCP tuning: inspect, test, recommend; apply only after approval"
-  default_prompt: "Use $netriage to inspect and tune my relay or landing VPS networking safely."
-policy:
-  allow_implicit_invocation: true
+  short_description: "Evidence-based VPS TCP tuning with BDP and policer tests"
+  default_prompt: "Use $netriage to inspect my VPS path, derive candidates, and recommend verified TCP tuning before any changes."
