@@ -6,20 +6,22 @@ then STOP and wait for explicit approval before any persistent change.
 
 ## 1. Evidence summary
 
-- Role and traffic path:
+- Role (落地 / 线路 / 中转) and traffic path:
+- Advertised / nominal bandwidth (Mbps, up/down):
 - Critical direction:
 - Peer purpose/lifecycle (nearby capacity peer vs durable business-path peer):
 - Approved test budget/window and measured bytes transferred:
 - Bandwidth / RTT class (source: known port speed | speedtest | measured):
 - PMTU findings:
-- iperf3 results per durable peer (P1/P4, forward/reverse, retransmits):
+- Fixed endpoint tuple per durable peer (literal IP, family, explicit or kernel-selected source IP, egress NIC, port):
+- iperf3 results per durable peer (complete P1/P4 JSON, forward/reverse, retransmits):
 - qdisc drop/backlog and TCP counter deltas during test windows:
 - Bottleneck interpretation:
-- Candidate derivation ledger (`scripts/derive-candidates.py`):
+- Candidate derivation ledger (host role + separate socket workload passed to `scripts/derive-candidates.py`):
 
 | Item | Inputs / formula | Raw candidate | Safety cap | Final candidate | Limiting factor |
 | --- | --- | ---: | ---: | ---: | --- |
-| BDP / socket max / default / tcp_mem | | | | | |
+| BDP / 2×BDP / 2×BDP+2MiB / socket max / default / tcp_mem | | | | | |
 
 ## 2. Exact candidate configuration
 
@@ -58,5 +60,6 @@ Non-changes are conclusions too; list every knob considered and dropped.
 
 ## 6. Rollback plan
 
+- Snapshot route tuple (literal peer IP passed as `ROUTE_TARGET`, optional bound source as `ROUTE_SOURCE`):
 - Backup location (from `scripts/backup-snapshot.sh`):
 - Exact restore commands per owned file/unit/rule:

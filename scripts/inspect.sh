@@ -5,11 +5,12 @@
 #
 # Usage:
 #   ssh <host> bash -s < scripts/inspect.sh
-#   ssh <host> bash -s -- <route-target> < scripts/inspect.sh
+#   ssh <host> bash -s -- <route-target> [<route-source>] < scripts/inspect.sh
 #   bash scripts/inspect.sh            # on the host itself
 
 set -u
 route_target=${1:-1.1.1.1}
+route_source=${2:-}
 
 section() { printf '\n===== %s =====\n' "$*"; }
 
@@ -20,9 +21,18 @@ show_sysctl() {
   done
 }
 
+route_get() {
+  if [ -n "$route_source" ]; then
+    ip -o route get "$route_target" from "$route_source" 2>/dev/null || true
+  else
+    ip -o route get "$route_target" 2>/dev/null || true
+  fi
+}
+
 section "system"
 hostname
 uname -r
+uname -m
 head -5 /etc/os-release 2>/dev/null
 uptime
 virt=$(systemd-detect-virt 2>/dev/null || true)
@@ -40,7 +50,8 @@ ip -br addr show
 ip route show
 ip -6 route show 2>/dev/null | head -20
 printf 'route target: %s\n' "$route_target"
-ip -o route get "$route_target" 2>/dev/null || true
+printf 'route source: %s\n' "${route_source:-<kernel-selected>}"
+route_get
 
 section "sockets"
 ss -s
@@ -74,7 +85,7 @@ show_sysctl \
   vm.min_free_kbytes vm.swappiness fs.file-max
 
 section "live qdisc (root qdisc on egress, not just default_qdisc)"
-dev=$(ip -o route get "$route_target" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
+dev=$(route_get | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' | head -1)
 echo "egress dev: ${dev:-<unknown>}"
 tc -s qdisc show
 if [ -n "${dev:-}" ]; then
@@ -122,6 +133,23 @@ find -L /etc/sysctl.d -maxdepth 1 -name '*.conf' -print -exec sed -n '1,160p' {}
 grep -En 'tcp_rmem|tcp_wmem|rmem_max|wmem_max|default_qdisc|congestion_control' /etc/sysctl.conf 2>/dev/null || true
 
 section "one-click script artifacts"
+# Installed script versions — pin against reviews before recommending a rerun.
+for f in /usr/local/bin/tcpfit /usr/local/sbin/tcpfit.sh /usr/local/bin/tcpfit.sh; do
+  [ -f "$f" ] || continue
+  printf '%s VERSION= ' "$f"
+  grep -m1 -E '^VERSION=' "$f" 2>/dev/null || echo '(no VERSION=)'
+done
+for f in /usr/local/bin/net-tcp-tune.sh /root/net-tcp-tune.sh /opt/net-tcp-tune.sh \
+         /usr/local/bin/bbr; do
+  [ -f "$f" ] || continue
+  printf '%s SCRIPT_VERSION= ' "$f"
+  grep -m1 -E '^SCRIPT_VERSION=' "$f" 2>/dev/null || echo '(no SCRIPT_VERSION=)'
+done
+for f in /usr/local/bin/tcp.sh; do
+  [ -f "$f" ] || continue
+  printf '%s header= ' "$f"
+  grep -m1 -E 'v2\\.|TCP-Optimize|Enhanced' "$f" 2>/dev/null || echo '(present)'
+done
 # Eric86777/vps-tcp-tune (menu 3 / Realm fix)
 ls -la /etc/sysctl.d/99-bbr-ultimate.conf /usr/local/bin/bbr-optimize-apply.sh \
   /etc/systemd/system/bbr-optimize-persist.service \
@@ -137,7 +165,9 @@ systemctl is-enabled mss-clamp.service 2>/dev/null
 ls -la /etc/sysctl.d/99-tcpfit.conf /etc/modules-load.d/tcpfit-bbr.conf \
   /etc/systemd/system/tcpfit-qdisc.service /usr/local/sbin/tcpfit-qdisc.sh \
   /etc/networkd-dispatcher/routable.d/50-tcpfit-initcwnd \
-  /var/lib/tcpfit /etc/sysctl.d/99-nettune.conf \
+  /var/lib/tcpfit /var/lib/tcpfit/archives /var/lib/tcpfit/initcwnd.owned \
+  /var/lib/tcpfit/no-telemetry /var/lib/tcpfit/stats.json /var/lib/tcpfit/swapfile.owned \
+  /usr/local/bin/tcpfit /etc/sysctl.d/99-nettune.conf \
   /etc/systemd/system/nettune-qdisc.service /var/lib/nettune 2>/dev/null
 systemctl is-enabled tcpfit-qdisc.service 2>/dev/null
 grep -n 'precedence ::ffff:0:0/96' /etc/gai.conf 2>/dev/null

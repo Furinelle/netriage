@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-06
+
+### Added
+
+- Rechecked [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit) at **v0.5.7** (`1163c20`, release SHA-256 `704c9f284cb60a76e8ee3c54d69e0d87fca28178e23ea1e93c0641fd6281ce79`) and added a current-boundary section to `references/tcpfit-review.md`.
+- Cross-checked route-freezing, sample-quality, and fail-closed workflow ideas against [`ike-sh/bbrv3-lite` v8.0.3](https://github.com/ike-sh/bbrv3-lite/releases/tag/v8.0.3), without adopting its one-click control plane.
+- Added standard-library regression coverage for target page size/concurrency math, non-finite input rejection, and non-divisible sweep ranges.
+
+### Changed
+
+- Promoted role (**落地 / 线路 / 中转**) plus nominal up/down bandwidth to an identity gate: no SSH, inspection, test, or recommendation before both are known.
+- `scripts/derive-candidates.py` now requires target `--page-size`, explicit `--concurrency`, and a separate `--workload` class (`--role` remains a compatibility alias); JSON now labels that field `workload` rather than the ambiguous host `role`. It uses an auditable RAM/4 budget divided by concurrency, emits tcpfit's 2×BDP+2MiB value as a competing candidate, rejects NaN/Inf, and rejects ambiguous sweep ranges.
+- `scripts/measure-window.sh` now captures pre/post `ip route get` and an unstatted qdisc/class/filter topology checksum, so a route or leaf/class/filter change invalidates the sample rather than being reported as an unchanged root qdisc.
+- `scripts/backup-snapshot.sh` requires and binds a `ROUTE_TARGET`/optional `ROUTE_SOURCE` tuple to a RUN_ID, records the selected route, and snapshots that interface's topology; it also preserves an installed `/usr/local/bin/tcpfit`. `inspect.sh` records CPU architecture, installed third-party versions, and current tcpfit archive/telemetry artifacts.
+- Updated templates and the method/README guidance for literal peer IPs, complete iperf3 JSON samples, target page size, expected concurrency, current tcpfit pin, and ARM64 XanMod/BBRv3 restrictions.
+- Rechecked `Eric86777/vps-tcp-tune` at v5.4.8 (`573c66d`): menu 3 TCP tuning remains unchanged; v5.4.7 confirms ARM64 must not run the XanMod/BBRv3 kernel phase. `TCP-Optimize` remains at `c508c1e`.
+
+### Safety findings
+
+- tcpfit v0.5.7 fixes the old temporary-HTB and `mq 0:` handling paths, but still restores qdiscs by kind rather than complete topology. Netriage therefore continues to reject temporary root replacements without an exact owner/config restore path.
+- tcpfit v0.5.7 menu startup makes an opt-out telemetry request. Netriage never wraps or auto-runs it; an explicit upstream run must disclose it and set `TCPFIT_NO_TELEMETRY=1` unless the user explicitly approves the outbound request.
+
 ## 2026-08-09
 
 ### Added

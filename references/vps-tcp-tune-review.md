@@ -2,7 +2,9 @@
 
 Source reviewed: [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune), main script `net-tcp-tune.sh` **v5.4.4** (commit pin the tree you download; this review follows the 2026-07-22 main tip), reviewed 2026-07-22.
 
-Recheck 2026-07-26: upstream is now **v5.4.6** (`44b2870`, 2026-07-23). v5.4.5/v5.4.6 are security hardening only — `mktemp`-randomized temp files for the Xray/sing-box/cloudflared/China-IP downloads and access-key auth for the menu 32-7 Responses proxy — with zero changes to menu 3, the buffer ladder, sysctl values, the Realm fix, menu 66, or the owned artifacts. Everything below remains accurate for v5.4.6.
+Recheck 2026-07-26: upstream was **v5.4.6** (`44b2870`, 2026-07-23). v5.4.5/v5.4.6 are security hardening only — `mktemp`-randomized temp files for the Xray/sing-box/cloudflared/China-IP downloads and access-key auth for the menu 32-7 Responses proxy — with zero changes to menu 3, the buffer ladder, sysctl values, the Realm fix, menu 66, or the owned artifacts.
+
+Recheck 2026-09-06: `main` remains **v5.4.8** (`573c66d`, 2026-07-27). Menu 3, its buffer ladder/sysctls, Realm path, menu 66, and owned artifacts remain unchanged. v5.4.7 makes the ARM64 limitation explicit: do not install XanMod/BBRv3 on ARM64; use the in-kernel `bbr` only when evidence supports it.
 
 Use these notes when a user asks to copy, compare, audit, or run that script, or mentions `bbr` one-click, XanMod + BBRv3 menus, menu `3`/`66`, Realm timeout fix, or “一键全自动优化”. They are a static review of the cited revision; re-inspect the current upstream file before acting.
 
@@ -214,7 +216,13 @@ ls /etc/sysctl.d/*disable-ipv6* 2>/dev/null
 | RPS/RFS | Multi-vCPU, softnet/IRQ concentration, insufficient RSS |
 | Realm/conntrack pack | Realm (or heavy NAT relay) present; conntrack pressure |
 | Disable IPv6 / force IPv4 | Dual-stack comparison; no IPv6-only dependency |
-| Run upstream script as-is | User explicitly wants the toolbox; pin version (**≥ v5.4.6** — earlier versions used predictable `/tmp` paths for downloaded payloads, a local symlink-attack surface); full backup; list side effects (DNS, IPv6, proxy menus) |
+| Run upstream script as-is | User explicitly wants the toolbox; pin version (**v5.4.8**; never below v5.4.6 because earlier versions used predictable `/tmp` paths for downloaded payloads); full backup; list side effects (DNS, IPv6, proxy menus). On ARM64, refuse menu 1 and menu 66's kernel phase. |
+
+## 2026-09-06 Addendum: v5.4.8 (`573c66d`)
+
+Static re-read of `net-tcp-tune.sh` at `main` (`SCRIPT_VERSION="5.4.8"`). The TCP-oriented menu 3 flow has not changed since the v5.4.6 review. v5.4.7 removed the old ARM64 menu-1 third-party kernel path after its checksum endpoint failed and now states that mainline does not ship BBRv3 and official XanMod builds are x86_64-only. v5.4.8 is a Snell v6 RC update outside this skill's scope.
+
+Netriage treatment is unchanged: ARM64/aarch64 hosts must not be offered a XanMod/BBRv3 installation; menu 66 must not chain the kernel phase. If a user explicitly wants this toolbox, inspect the pinned file first and retain the evidence gates for its DNS, IPv6, proxy, and kernel side effects.
 
 ## Primary References
 

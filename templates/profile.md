@@ -9,7 +9,7 @@ accidentally execute rollback-looking commands.
 
 ## Host
 
-- Alias / role / traffic path:
+- Alias / role (落地 / 线路 / 中转) / traffic path:
 - Kernel / distro:
 - Date applied / RUN_ID:
 
@@ -23,7 +23,7 @@ accidentally execute rollback-looking commands.
 
 ## Tests
 
-- Baseline (per peer: PMTU, iperf3 P1/P4 fwd/rev, retransmits, qdisc deltas):
+- Baseline (per peer: fixed endpoint tuple, PMTU, complete iperf3 P1/P4 fwd/rev JSON, retransmits, qdisc deltas):
 - Post-apply retest:
 
 ## Applied configuration
@@ -44,5 +44,6 @@ accidentally execute rollback-looking commands.
 
 ## Backup and rollback
 
+- Snapshot route tuple:
 - Backup path:
 - Exact restore commands:

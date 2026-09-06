@@ -4,6 +4,8 @@ Source reviewed: [`Madhatter2099/TCP-Optimize`](https://github.com/Madhatter2099
 
 Recheck 2026-07-26: upstream `main` is now `c508c1e` (2026-07-13); `tcp.sh` was rewritten from v2.0 (501 lines) to "v2.1 (Enhanced)" (750 lines, sha256 `dcf8ea91694232d303f7e70493d74ec03bd0717cfbab22e4eaa295c4a38dcfff`). The sections below describe v2.0 unless marked; the dated addendum near the end covers what v2.1 changed.
 
+Recheck 2026-09-06: `main` remains `c508c1e`; no newer TCP-path change was found. The v2.1 addendum remains current.
+
 Use these notes when a user asks to copy, compare, audit, or run that script. They are a static review of the cited commits; inspect the current upstream revision again before acting.
 
 ## Ideas Worth Reusing

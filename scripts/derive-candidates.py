@@ -10,17 +10,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import math
 from dataclasses import asdict, dataclass
 
 MIB = 1024 * 1024
 GIB = 1024 * MIB
+MAX_BDP_BYTES = 2**63 - 1
 
 
 def positive_float(value: str) -> float:
     parsed = float(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("must be greater than zero")
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number greater than zero")
     return parsed
 
 
@@ -31,23 +32,20 @@ def positive_int(value: str) -> int:
     return parsed
 
 
-def current_page_size() -> int:
-    try:
-        return os.sysconf("SC_PAGE_SIZE")
-    except (ValueError, OSError):
-        return 4096
-
-
 @dataclass(frozen=True)
 class CandidateReport:
     bandwidth_mbps: float
     rtt_ms: float
     ram_mib: int
-    role: str
+    concurrency: int
+    workload: str
     page_size_bytes: int
     bdp_bytes: int
     bdp_mib: float
     two_x_bdp_bytes: int
+    tcpfit_v0_5_7_competing_candidate_bytes: int
+    ram_quarter_budget_bytes: int
+    ram_quarter_budget_per_socket_bytes: int
     ram_per_socket_cap_bytes: int
     socket_max_candidate_bytes: int
     socket_max_limiting_factor: str
@@ -60,26 +58,34 @@ class CandidateReport:
 
 
 def derive(args: argparse.Namespace) -> CandidateReport:
-    bdp = round(args.bandwidth_mbps * 1_000_000 / 8 * (args.rtt_ms / 1000))
+    bdp_float = args.bandwidth_mbps * 1_000_000 / 8 * (args.rtt_ms / 1000)
+    if not math.isfinite(bdp_float) or bdp_float > MAX_BDP_BYTES:
+        raise ValueError("bandwidth and RTT produce an unsupported BDP")
+    bdp = round(bdp_float)
     two_x_bdp = bdp * 2
+    tcpfit_competing_candidate = two_x_bdp + 2 * MIB
 
-    # tcpfit v0.3.8 uses RAM/32 as a per-socket concurrency cap and 256 MiB as
-    # an absolute cap.  Keep it as an auditable candidate, not a universal rule.
-    ram_cap = min(args.ram_mib * MIB // 32, 256 * MIB)
+    # An explicit RAM/4 total budget divided across expected concurrent large
+    # sockets preserves the former RAM/32 assumption when concurrency is eight.
+    ram_quarter_budget = args.ram_mib * MIB // 4
+    ram_quarter_budget_per_socket = ram_quarter_budget // args.concurrency
+    if ram_quarter_budget_per_socket < 1:
+        raise ValueError("RAM/4 divided by concurrency must be at least one byte")
+    ram_cap = min(ram_quarter_budget_per_socket, 256 * MIB)
     floor = min(4 * MIB, ram_cap)
     socket_max = max(floor, min(two_x_bdp, ram_cap))
     if socket_max == floor and two_x_bdp < floor:
         limiting_factor = "minimum_floor"
     elif two_x_bdp <= ram_cap:
         limiting_factor = "two_x_bdp"
-    elif args.ram_mib * MIB // 32 <= 256 * MIB:
-        limiting_factor = "ram_div_32_concurrency_cap"
+    elif ram_quarter_budget_per_socket <= 256 * MIB:
+        limiting_factor = "ram_quarter_budget_divided_by_concurrency_cap"
     else:
         limiting_factor = "absolute_256_mib_cap"
 
-    if args.role == "proxy":
+    if args.workload == "proxy":
         socket_default = 1 * MIB
-    elif args.role == "bulk":
+    elif args.workload == "bulk":
         socket_default = max(1 * MIB, min(bdp, 8 * MIB))
     else:
         socket_default = 2 * MIB
@@ -105,11 +111,17 @@ def derive(args: argparse.Namespace) -> CandidateReport:
             )
         if args.sweep_to < args.sweep_from:
             raise ValueError("--sweep-to must be greater than or equal to --sweep-from")
-        rates = list(range(args.sweep_from, args.sweep_to + 1, args.sweep_step))
-        sweep_step_count = len(rates)
+        if (args.sweep_to - args.sweep_from) % args.sweep_step:
+            raise ValueError("sweep range must be evenly divisible by --sweep-step")
+        sweep_step_count = (args.sweep_to - args.sweep_from) // args.sweep_step + 1
         # Aggregate rate is the shaper rate; stream count does not multiply it.
+        sweep_rate_sum = sweep_step_count * (args.sweep_from + args.sweep_to) // 2
         payload_bytes = (
-            sum(rates) * 1_000_000 / 8 * args.sweep_duration * args.sweep_repeats
+            sweep_rate_sum
+            * 1_000_000
+            // 8
+            * args.sweep_duration
+            * args.sweep_repeats
         )
         sweep_gib = round(payload_bytes / GIB, 3)
 
@@ -117,11 +129,15 @@ def derive(args: argparse.Namespace) -> CandidateReport:
         bandwidth_mbps=args.bandwidth_mbps,
         rtt_ms=args.rtt_ms,
         ram_mib=args.ram_mib,
-        role=args.role,
+        concurrency=args.concurrency,
+        workload=args.workload,
         page_size_bytes=args.page_size,
         bdp_bytes=bdp,
         bdp_mib=round(bdp / MIB, 2),
         two_x_bdp_bytes=two_x_bdp,
+        tcpfit_v0_5_7_competing_candidate_bytes=tcpfit_competing_candidate,
+        ram_quarter_budget_bytes=ram_quarter_budget,
+        ram_quarter_budget_per_socket_bytes=ram_quarter_budget_per_socket,
         ram_per_socket_cap_bytes=ram_cap,
         socket_max_candidate_bytes=socket_max,
         socket_max_limiting_factor=limiting_factor,
@@ -132,7 +148,8 @@ def derive(args: argparse.Namespace) -> CandidateReport:
         sweep_payload_estimate_gib=sweep_gib,
         notes=(
             "Candidate math only; validate against real traffic, concurrency and memory pressure.",
-            "tcp_mem values are pages; pass the target host page size when it is not 4096 bytes.",
+            "tcp_mem values are pages; --page-size must come from the target host.",
+            "tcpfit v0.5.7's 2xBDP+2MiB value is a competing candidate, not the netriage selection.",
             "Sweep estimate is payload only and excludes retries, protocol overhead, baseline and verification runs.",
         ),
     )
@@ -143,8 +160,17 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--bandwidth-mbps", type=positive_float, required=True)
     p.add_argument("--rtt-ms", type=positive_float, required=True)
     p.add_argument("--ram-mib", type=positive_int, required=True)
-    p.add_argument("--role", choices=("proxy", "bulk", "mixed"), required=True)
-    p.add_argument("--page-size", type=positive_int, default=current_page_size())
+    p.add_argument("--concurrency", type=positive_int, required=True)
+    p.add_argument(
+        "--workload",
+        "--role",
+        dest="workload",
+        choices=("proxy", "bulk", "mixed"),
+        required=True,
+        metavar="WORKLOAD",
+        help="socket workload class, not the landing/line/relay host role",
+    )
+    p.add_argument("--page-size", type=positive_int, required=True)
     p.add_argument("--sweep-from", type=positive_int)
     p.add_argument("--sweep-to", type=positive_int)
     p.add_argument("--sweep-step", type=positive_int)

@@ -13,8 +13,9 @@
 并参考了常见一键调优脚本的模块设计（吸收工作流，不照搬参数）：
 
 - [`Madhatter2099/TCP-Optimize`](https://github.com/Madhatter2099/TCP-Optimize)（`tcp.sh` v2.0 完整审阅 + v2.1 增补审阅）
-- [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune)（`net-tcp-tune.sh` v5.4.4 审阅，2026-07-26 复查至 v5.4.6：纯安全加固，TCP 调优逻辑无变化）
-- [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit)（v0.3.8 / `5671da0` 源码审阅：吸收 BDP/RAM 推导账本、测试流量预算和 policer 拐点实验方法，不运行其自动调优）
+- [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune)（`net-tcp-tune.sh` v5.4.4 审阅；2026-09-06 复查至 **v5.4.8**：菜单 3 / buffer 未变，v5.4.7 起 ARM64 不再装 XanMod/BBRv3）
+- [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit)（v0.3.8 / `5671da0` 方法审阅 + 2026-09-06 **v0.5.7** / `1163c20` 增量审阅：吸收 BDP/RAM 推导账本、测试流量预算和 policer 拐点实验方法，不运行其自动调优）
+- [`ike-sh/bbrv3-lite`](https://github.com/ike-sh/bbrv3-lite)（v8.0.3 工作流交叉核验：吸收路径冻结、样本质量与 fail-closed 回滚，不引入其一键控制面）
 
 > 这个仓库不是“一键复制 sysctl 参数”的清单，也不是 `curl | bash` 包装器。它更像是一套给 AI 运维 agent 使用的工作流：先问清楚链路，再检查，再测试，再给出推荐配置，最后由用户决定是否应用。
 
@@ -26,13 +27,14 @@
 - 直接套 `TBF=1000Mbit`
 - 直接把 TCP buffer 拉到 `256MB` / 海外档 `64MB`
 - 看到重传就马上限速
-- 不区分中转机、落地机、建站机、出口机
+- 不区分落地、线路、中转，也不问标称带宽就开调
 - 不区分 TCP 协议和 HY2 / TUIC / QUIC 这类 UDP 协议
 - 直接跑一键菜单（DNS 净化、永久关 IPv6、Realm 改配置）却不做证据核对
 
 这个 Skill 强制 agent 按证据判断：
 
-- 当前机器是什么角色：中转、落地、出口、建站、混合节点
+- 当前机器是什么角色：**落地 / 线路 / 中转**（未确认前不检查、不测、不推荐）
+- 标称带宽是多少 Mbps（套餐/端口速率，上下行分开）
 - 真实业务链路怎么走，服务地区 / RTT 档位（亚太短 RTT vs 美欧长 RTT）
 - 用户关键方向是哪一段
 - 当前 sysctl / qdisc / MTU / 服务状态是什么
@@ -45,7 +47,7 @@
 ## 核心原则
 
 - 用户说 `tcp调优`、`进行TCP调优`、`VPS网络调优`、`BBR调优`、`网络优化`、`开启BBR`、`测速慢`/`高重传`排查等时，应自动使用这个 Skill。
-- agent 必须主动询问缺失信息，不能只看主机名猜业务链路。
+- agent 必须先确认角色（落地 / 线路 / 中转）和标称带宽，不能只看主机名猜；未确认前不 SSH、不检查、不测、不推荐。
 - 默认只做检查、测试和推荐，不默认写持久配置。
 - 所有持久配置变更前，必须先给出推荐配置。
 - 是否应用推荐配置，由用户决定。
@@ -94,7 +96,7 @@ git pull
 
 - 基础工具：`iproute2`（`ip`/`ss`/`tc`）、`sysctl`；主流 systemd 发行版（Debian/Ubuntu/RHEL 系）自带
 - 测试工具：`iperf3`（吞吐测试）、`tracepath` 或 `ping`（PMTU）、`ethtool`（可选）
-- 本地候选计算：Python 3（仅 `scripts/derive-candidates.py` 使用，不需要第三方包）
+- 本地候选计算：Python 3（仅 `scripts/derive-candidates.py` 使用，不需要第三方包）；必须输入**目标机**的 `getconf PAGE_SIZE` 与预期并发，不能沿用运行 agent 的机器参数
 - 装包本身属于变更：默认权限边界下 agent 会先征求同意再安装 iperf3；为测试临时放行的防火墙端口会在本轮结束时清理
 
 ## 触发方式
@@ -131,10 +133,18 @@ Use $netriage to inspect and tune my relay or landing VPS networking safely.
 
 agent 不会一次抛出十几个问题，而是分层询问：
 
-**首轮必问（缺失时）：**
+**身份门（缺一不可；未确认前不 SSH / 不检查 / 不测 / 不推荐）：**
+
+- `machine_role`：这台 VPS 是 **落地**、**线路** 还是 **中转**
+  - 落地：终结或发起用户访问公网的那一跳
+  - 线路：专线/优化线路跳（既不是用户入口，也不是最终出口）
+  - 中转：在用户（或上一跳）和下一跳之间转发
+- `advertised_bandwidth`：套餐/端口**标称**带宽（Mbps；上下行不对称就分开写）。优先买到的端口速率，不用公共测速替代。
+
+**首轮其余必问（缺失时）：**
 
 - `target_ssh`：目标机器的 SSH alias 或 SSH 命令
-- `machine_role` + `traffic_path`：中转/落地/出口/建站/混合，以及例如 `用户 -> 中转 -> 落地 -> internet`
+- `traffic_path`：例如 `用户 -> 中转 -> 线路 -> 落地 -> internet`
 - `critical_direction`：用户真正关心的方向，例如下载、上传、视频秒开
 - `permission_boundary`：只检查 / 允许测试 / 只给计划 / 允许应用；是否允许重启、改 MTU、临时替换根 qdisc、限速/qos-agent、清理备份日志、跑第三方脚本/换内核
 
@@ -145,8 +155,8 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 **到相应阶段再问：**
 
-- 定 buffer 前：`advertised_bandwidth`（已知端口带宽优先于公共测速）、`service_region` / RTT 档（亚太短延迟 vs 美欧长延迟）
-- 测试前：`test_peers`（标签、地址、iperf3 端口、是否允许 ping、是否能 SSH）、`peer_lifecycle`（持久参数以长期续费 peer 为依据）、`test_budget_gb` 与配额/账期/峰谷窗口
+- 定 buffer 前：`service_region` / RTT 档（亚太短延迟 vs 美欧长延迟）、预期大 socket 并发、目标机 page size 和 socket workload（`proxy`=高并发用户态 TCP 终止；`bulk`=少量长 TCP；`mixed`=两者）。workload 不是从落地 / 线路 / 中转自动推导；纯内核转发可能根本不需要 endpoint buffer 候选。标称带宽已在身份门问过，不要拖到这一步。
+- 测试前：`test_peers`（标签、**literal IP**、IP family、iperf3 端口、是否允许 ping、是否能 SSH）、`peer_lifecycle`（持久参数以长期续费 peer 为依据）、`test_budget_gb` 与配额/账期/峰谷窗口
 - 相关时：Realm 等 L4 中转是否在链路中、是否必须保持双栈
 
 ## 推荐配置再应用
@@ -167,17 +177,17 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 ## 典型工作流
 
-1. 主动询问缺失上下文。
-2. 只读检查主机：OS、kernel、CPU、内存、接口、MTU、路由、socket、sysctl、qdisc、服务进程；识别是否已有一键脚本产物（如 `99-bbr-ultimate.conf`、`bbr-optimize-persist.service`）。
+1. 先问清角色（落地 / 线路 / 中转）和标称带宽，再问其余上下文。
+2. 只读检查主机：OS、kernel/**架构**、CPU、内存、接口、MTU、实际 peer 路由、socket、sysctl、qdisc、服务进程；识别已安装的一键脚本版本与产物。
 3. 读取已有 `/etc/sysctl.conf`、`/etc/sysctl.d/*.conf` 和 `*.profile.md`。
 4. 区分附近高容量 peer、长期业务 peer、临时/即将弃用 peer；持久参数以匹配真实路径的长期 peer 为依据。
-5. 先估算测试流量，再逐 peer 做 PMTU、ping、iperf3 P1/P4 正向/反向测试。
-6. 用 `scripts/measure-window.sh` 记录接口字节、qdisc、softnet 和 TCP counter delta。
-7. 按中转/落地/出口/Web 角色解释结果；用 `scripts/derive-candidates.py` 输出 BDP、内存/并发上限和截断原因。
+5. 先估算测试流量，再逐 peer 做 PMTU、ping、iperf3 P1/P4 正向/反向测试；固定 literal IP、family、source、egress NIC、port。
+6. 用 `scripts/measure-window.sh --route-target <literal-peer-ip> [--route-source <bound-source-ip>]` 记录接口字节、qdisc/class/filter 拓扑、softnet、route tuple 和 TCP counter delta；若给了 source，iperf3 也须以 `-B <bound-source-ip>` 绑定同一 source，或直接测实际绑定的服务。路径/拓扑漂移的样本作废，保留完整 `iperf3 -J` 文件。
+7. 按落地 / 线路 / 中转（及出口/Web）解释结果；用 `scripts/derive-candidates.py --page-size <target> --concurrency <expected> --workload <proxy|bulk|mixed>` 输出 BDP、内存/并发上限和截断原因；不要把 host role 硬映射成 workload。
 8. 只有在 nearby peer 足够快、拐点可重复且 qdisc 能精确恢复时，才设计 policer sweep；无稳定 knee 就不整形。
 9. 给出推荐配置和不改项。
 10. 等用户确认。
-11. 应用前备份并处理 sysctl 冲突；需要 `fq` 时同时处理 live qdisc 与持久化。
+11. 应用前以 `ROUTE_TARGET=<literal-peer-ip>` 备份并处理 sysctl 冲突；服务绑定 source IP 时另加 `ROUTE_SOURCE=<bound-source-ip>`。需要 `fq` 时同时处理 live qdisc 与持久化。
 12. 应用后验证 SSH、关键服务、live 参数，并写 profile 与最终报告。
 
 ## 一次典型运行的样子
@@ -185,11 +195,11 @@ agent 不会一次抛出十几个问题，而是分层询问：
 > 以下为流程示意，数值是虚构占位，不是推荐值。
 
 1. 你说：`帮我对 hk-relay 做 TCP 调优`。
-2. agent 问齐首轮四项：目标 SSH、角色 + 链路、关键方向、权限边界。
+2. agent 先问身份门（落地 / 线路 / 中转 + 标称 Mbps），再问目标 SSH、链路、关键方向、权限边界。
 3. 只读检查（`scripts/inspect.sh`）：内核 6.1、`bbr` 可用但当前是 `cubic`、根 qdisc 是 `fq_codel`、发现某一键脚本残留的 `99-xxx.conf`。
 4. 逐 peer 测试：PMTU 1500 干净；iperf3 到长期落地机反向 P1 只有 180 Mbps、重传 2.1%，本机 qdisc drop 为 0。
 5. 给出推荐 bundle（按 `templates/recommendation.md` 六段式）：BBR + fq、buffer 按 BDP 给候选值、列明不改 MTU / 不限速的理由、附验证与回滚方案。
-6. 你说"按推荐应用"后，agent 先跑 `scripts/backup-snapshot.sh` 快照，再写入配置、读回 live 状态、复测关键方向、落 profile。
+6. 你说"按推荐应用"后，agent 先跑 `ROUTE_TARGET=<literal-peer-ip> bash scripts/backup-snapshot.sh` 快照（服务绑定 source 时再加 `ROUTE_SOURCE`），再写入配置、读回 live 状态、复测关键方向、落 profile。
 
 ## FAQ
 
@@ -205,12 +215,13 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 ## 实战经验更新
 
-2026-08-09 参考 tcpfit v0.3.8 后新增：
+2026-09-06 参考 tcpfit v0.5.7 与同类测量工具后更新：
 
-- **推导账本**：buffer 推荐必须显示 BDP、2×BDP、RAM/并发 cap、最终值和截断原因；`tcp_mem` 必须按目标机 page size 展示，不能把页当字节。
+- **推导账本**：buffer 推荐必须显示 BDP、2×BDP、2×BDP+2MiB（tcpfit 的竞争候选）、RAM/4 ÷ 并发 cap、最终值和截断原因；`tcp_mem` 必须按目标机 page size 展示，不能把页当字节。
 - **测试成本门**：probe/sweep 前估算流量下界并确认配额与窗口，测试后用接口 RX/TX delta 报实际消耗（注明同接口业务流量会污染计量）。
-- **policer 实验法**：先验证 nearby peer 能力，疑似跳变要重复，粗扫后细扫；扫描范围干净时结论是“本次未观察到 knee”，不是把上界当成整形值。
-- **qdisc 事务安全**：tcpfit v0.3.8 只按 qdisc kind 恢复，自动 sweep 还存在状态清空后遗留临时 HTB 的路径；生产机不运行该版本 auto-sweep，复杂 qdisc 无精确恢复方案就不替换。
+- **样本冻结**：每轮固定 literal IP、family、source、egress NIC、port，测试前后核验 `ip route get`；路径或 tc topology 漂移、CPU 饱和或结果不稳定时不产出整形推荐。
+- **policer 实验法**：先验证 nearby peer 能力，疑似跳变要重复、交错 A/B/A，粗扫后细扫；扫描范围干净时结论是“本次未观察到 knee”，不是把上界当成整形值。
+- **qdisc 事务安全**：tcpfit v0.5.7 修复了 v0.3.8 遗留临时 HTB 与 `mq 0:` 兼容问题，但仍只按 kind 恢复，不能重建 HTB class/filter/参数；复杂 qdisc 无精确恢复方案就不替换。
 
 2026-07-09 对 `dmit-lax` 做 TCP/UDP 调优后，补充了几条更强约束：
 
@@ -224,7 +235,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 ### Kylin010/tcpfit
 
-吸收（作为实验设计，不直接运行 v0.3.8 自动调优）：
+吸收（作为实验设计，不直接运行上游自动调优）：
 
 - BDP × RAM × 角色的透明候选计算，并展示被哪个 cap 截断
 - probe/sweep 前的流量预算与测试后的接口字节计量
@@ -234,12 +245,13 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 明确拦截：
 
-- v0.3.8 的 `qdisc_save` 只保存类型，不能恢复 HTB class/filter/自定义参数
-- 自动 sweep 在不限速探测后清空保存状态，后续退出路径可能遗留最后一档临时 HTB
+- `qdisc_save` 只保存类型（`mq` 另记叶子 kind），不能恢复 HTB class/filter/自定义参数
+- v0.3.8 自动 sweep 的临时 HTB 遗留路径已于 v0.5.4 修复，但**不**代表 classful qdisc 可精确回滚
 - snapshot 中 route/qdisc 只是注释，rollback 不能据此精确还原
-- 固定中国 RTT 目标、4 KiB page 假设、`0.1%`/1448 MSS loss proxy、固定 margin/quantum/burst/flow_limit、全套 30+ sysctl、无条件 initcwnd 32
+- 固定 150ms RTT、4 KiB page 假设、`0.1%`/1448 MSS loss proxy、固定 qdisc 参数、全套 32 项 sysctl、CLI 的 `initcwnd 32`
+- v0.5.7 菜单默认有 opt-out telemetry；netriage 不执行它，用户坚持运行时须披露并以 `TCPFIT_NO_TELEMETRY=1` 禁用，除非明确同意该请求
 
-完整审阅见 [`references/tcpfit-review.md`](references/tcpfit-review.md)。仓库 pin：v0.3.8 / `5671da0`（2026-08-09）。
+完整审阅见 [`references/tcpfit-review.md`](references/tcpfit-review.md)。方法基线：v0.3.8 / `5671da0`；若用户明确要跑上游本体，pin **v0.5.7** / `1163c20`，并校验发布包 SHA-256。
 
 ### Madhatter2099/TCP-Optimize
 
@@ -265,11 +277,11 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 - menu 66 连锁（DNS 净化 + Realm 改配置 + 永久关 IPv6）
 - 未 pin 版本的 `curl | bash`
-- 把任意 XanMod / `bbr` 都叫 BBRv3
+- 把任意 XanMod / `bbr` 都叫 BBRv3，或在 ARM64 上装 XanMod / 承诺 BBRv3
 - 无压力证据就写死 `nf_conntrack_max=262144`
 - 无双栈对比就永久禁用 IPv6
 
-版本状态：v5.4.4 完整审阅；2026-07-26 复查至 v5.4.6——两个新版本均为安全加固（临时文件 mktemp 化、菜单 32-7 代理鉴权），菜单 3 / buffer 阶梯 / 产物文件零变化，审阅结论对 v5.4.6 仍然有效。若要运行上游工具箱本体，建议 pin ≥ v5.4.6。
+版本状态：v5.4.4 完整审阅；2026-09-06 复查至 **v5.4.8** (`573c66d`)——菜单 3 / buffer 阶梯 / 产物文件仍未变化。v5.4.7 起功能 1 在 ARM64 上不再下载第三方内核脚本，并写明主线没有 BBRv3、XanMod 只有 x86_64。若要运行上游工具箱本体，pin v5.4.8；ARM64 不要跑功能 1 / menu 66 的换内核阶段。
 
 完整审阅见 [`references/vps-tcp-tune-review.md`](references/vps-tcp-tune-review.md)。
 
@@ -280,24 +292,34 @@ agent 不会一次抛出十几个问题，而是分层询问：
 ├── SKILL.md                         # Skill 主说明
 ├── references/
 │   ├── blog-method.md               # 从原文整理出的详细方法和命令模式
-│   ├── tcpfit-review.md             # tcpfit v0.3.8 的推导/拐点方法与 qdisc 风险审阅
+│   ├── tcpfit-review.md             # tcpfit v0.3.8 方法基线 + v0.5.7 已修/仍成立增量
 │   ├── tcp-optimize-review.md       # 对 TCP-Optimize 的证据化参考与边界（含 v2.1 增补）
 │   └── vps-tcp-tune-review.md       # 对 Eric86777/vps-tcp-tune 的审阅与候选表
 ├── scripts/
 │   ├── inspect.sh                   # 只读检查采集（可经 SSH 远程执行）
 │   ├── pmtu-probe.sh                # PMTU 阶梯探测（只读）
-│   ├── derive-candidates.py         # BDP/RAM/角色候选与 sweep 流量下界计算
-│   ├── measure-window.sh            # 单次测试前后接口/qdisc/TCP counter delta
-│   └── backup-snapshot.sh           # 应用前全量配置快照
+│   ├── derive-candidates.py         # BDP / RAM÷并发 / tcpfit 竞争候选与 sweep 下界
+│   ├── measure-window.sh            # 单次测试前后 route + qdisc/class/filter delta
+│   └── backup-snapshot.sh           # 对实际业务 route 的应用前全量快照
 ├── templates/
 │   ├── recommendation.md            # 推荐配置六段式模板
 │   └── profile.md                   # 调优 profile 模板
+├── tests/                           # 标准库候选计算与 Linux qdisc 回归测试
 ├── agents/
 │   └── openai.yaml                  # Codex UI metadata
 ├── CHANGELOG.md                     # 更新日志
 ├── README.md                        # 中文说明
 └── LICENSE                          # 来源和许可说明
 ```
+
+## 开发验证
+
+```bash
+python3 -B -m unittest discover -s tests -v
+bash -n scripts/*.sh tests/*.sh
+```
+
+`test_backup_snapshot.sh` 与 `test_measure_window.sh` 需要 Linux 的 `/sys` / `/proc`；前者还因复用生产快照路径而需要 root。macOS 上会跳过，可在 root Linux 容器或测试机运行。
 
 ## 注意事项
 
@@ -306,6 +328,8 @@ agent 不会一次抛出十几个问题，而是分层询问：
 - HY2 / TUIC / QUIC 不吃 Linux TCP buffer，但仍会受 MTU、qdisc、CPU 调度和出口 shaping 影响。
 - qdisc drop/backlog 为 0 但 iperf3 高重传时，不要急着全局限速；更可能是路径、上游或对端问题。
 - 一个弱 peer 的结果不能直接推导为全局配置。
+- tcpfit v0.5.7 的默认 telemetry 是外部请求；除非用户明确同意，否则禁用后才运行。
+- `backup-snapshot.sh` 必须以 `ROUTE_TARGET=<literal-peer-ip>` 运行；服务绑定 source IP 时还要传 `ROUTE_SOURCE=<bound-source-ip>`，不允许回退到无关的默认路由。
 - 换内核 / 跑一键脚本前必须 pin 版本、全量备份，并列出副作用文件清单。
 
 ## 许可与署名
