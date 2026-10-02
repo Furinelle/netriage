@@ -2,6 +2,12 @@
 
 ## 2026-10-02
 
+### Traffic-saving follow-up
+
+- Prefer passive/current service evidence and reusable comparable samples, then one short paced P1 pilot in the critical direction. Plan an initial cumulative 64 MiB per-host ceiling when no budget is supplied, subordinate to smaller user limits and existing authorization; this is not a hard quota mechanism.
+- Removed the default-looking four-run uncapped iperf example and full-matrix template expectations. P4, reverse, extra peers, full-speed probes and sweeps now need an unresolved question; stop when evidence is sufficient and retest only affected paths.
+- Kept the distinction between a low-volume pilot and a sufficiently long steady-state/capacity test; reduced traffic must not become unsupported performance claims.
+
 ### Changed
 
 - Reviewed tcpfit **v0.5.9** (`38fbf5af30daf87735f2ffbc5e0905033ee2b86e`) against v0.5.7; verified script SHA-256 `8331cc40950229a3280ce32406330a85b1a3d21ba398a4db3dc7e25c39783741`. Documented scan/refinement guards, inconclusive samples, gateway-less routes and initcwnd persistence, while distinguishing upstream reports from local validation.

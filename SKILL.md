@@ -12,6 +12,7 @@ Diagnose the actual traffic path and change only settings supported by measureme
 - Before remote inspection, testing, or a concrete tuning recommendation, establish target identity, role (落地/线路/中转), and advertised bandwidth. Reuse session facts; ask only for missing information needed next.
 - Reuse existing authorization within its scope. Inspection or testing alone does not authorize persistent changes. Present exact proposed changes and obtain approval when application is not already authorized.
 - Budget traffic before throughput tests or sweeps. Temporary qdisc replacement requires full topology capture, serialized execution, cleanup, and provable exact restoration; skip it if restoration is unknown.
+- Minimize generated traffic: reuse recent comparable evidence, observe existing service traffic first, then test one representative peer in the critical direction with one short paced flow only if needed. P4, reverse tests, extra peers and sweeps require a specific unanswered question; stop once the evidence supports the decision. A traffic budget is a ceiling, not a target.
 - Before live changes, preserve affected files, units, rules, and values. Verify the real service path and read back live state after applying; roll back regressions.
 
 ## Read only the relevant procedure

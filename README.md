@@ -46,6 +46,14 @@
 - 是否真的需要 IPv4 优先、conntrack 扩容、RPS/RFS、MSS Clamp、initcwnd 或全局文件句柄扩容
 - 写了 `default_qdisc=fq` 之后，**live** qdisc/叶子队列是否正确使用 `fq`，以及是否保留了 `mq` 拓扑
 
+## 默认节省测试流量
+
+- 先看现有业务、socket 和计数器，复用路径与负载条件相符的近期结果。
+- 必要时只跑一个 peer、关键方向、单流短时限速测试；示例为 20 Mbps × 5 秒，约 12.5 MB payload，实际按链路和预算下调。
+- 未指定预算时，初步诊断按每台主机累计不超过 64 MiB 规划，包含重试与验收余量；这是计划上限，不是自动硬限额或新增测试授权。更小的用户预算优先，不按 peer 或对话轮次重置。
+- 不默认跑满 P1/P4 × 正反向，不自动全速测速、遍历公共端点或做 policer sweep；只有明确未决问题才升级，预算是上限，不是必须用完的额度。
+- 证据足够就停，修改后只复测受影响路径。短时限速样本不能证明峰值带宽或长期稳定性；需要稳态数据时单独预算充分测量。
+
 ## 核心原则
 
 - 用户说 `tcp调优`、`进行TCP调优`、`VPS网络调优`、`BBR调优`、`网络优化`、`开启BBR`、`测速慢`/`高重传`排查等时，应自动使用这个 Skill。
@@ -183,7 +191,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 2. 只读检查主机：OS、kernel/**架构**、CPU、内存、接口、MTU、实际 peer 路由、socket、sysctl、qdisc、服务进程；识别已安装的一键脚本版本与产物。
 3. 读取已有 `/etc/sysctl.conf`、`/etc/sysctl.d/*.conf` 和 `*.profile.md`。
 4. 区分附近高容量 peer、长期业务 peer、临时/即将弃用 peer；持久参数以匹配真实路径的长期 peer 为依据。
-5. 先估算测试流量，再逐 peer 做 PMTU、ping、iperf3 P1/P4 正向/反向测试；固定 literal IP、family、source、egress NIC、port。
+5. 先复用近期有效测量并观察现有业务流量；确有需要时，仅选一个长期 peer、关键方向、短时限速 P1。多流、反向、其他 peer 和扫描只用于解决尚未回答的问题；固定 literal IP、family、source、egress NIC、port。
 6. 用 `scripts/measure-window.sh --route-target <literal-peer-ip> [--route-source <bound-source-ip>]` 记录接口字节、qdisc/class/filter 拓扑、softnet、route tuple 和 TCP counter delta；若给了 source，iperf3 也须以 `-B <bound-source-ip>` 绑定同一 source，或直接测实际绑定的服务。路径/拓扑漂移的样本作废，保留完整 `iperf3 -J` 文件。
 7. 按落地 / 线路 / 中转（及出口/Web）解释结果；用 `scripts/derive-candidates.py --page-size <target> --concurrency <expected> --workload <proxy|bulk|mixed>` 输出 BDP、内存/并发上限和截断原因；不要把 host role 硬映射成 workload。
 8. 只有在 nearby peer 足够快、拐点可重复且 qdisc 能精确恢复时，才设计 policer sweep；无稳定 knee 就不整形。
@@ -304,7 +312,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 ├── SKILL.md                         # Skill 主说明
 ├── references/
 │   ├── blog-method.md               # 从原文整理出的详细方法和命令模式
-│   ├── tcpfit-review.md             # tcpfit v0.3.8 方法基线 + v0.5.7 已修/仍成立增量
+│   ├── tcpfit-review.md             # tcpfit v0.5.9 静态审阅与运行边界
 │   ├── tcp-optimize-review.md       # 对 TCP-Optimize 的证据化参考与边界（含 v2.1 增补）
 │   └── vps-tcp-tune-review.md       # 对 Eric86777/vps-tcp-tune 的审阅与候选表
 ├── scripts/

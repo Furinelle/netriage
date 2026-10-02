@@ -95,20 +95,26 @@ for s in 1472 1452 1432 1412 1392 1352 1332 1312 1292; do
 done
 ```
 
-iperf3 pattern; run only the approved subset and adapt direction to the user-critical path. Each `-t 12 -O 2` example sends for about 14 seconds; these TCP commands are uncapped and require a capacity-based budget first. For a paced test, budget `-P × -b`; do not add `-w` to the autotuning baseline:
+Traffic-saving pilot example; use only if passive evidence leaves a question.
+Choose one durable peer and the critical direction. The example is **P1 at
+20 Mbit/s for 5 seconds**, about **12.5 MB / 11.9 MiB of payload**, before
+protocol overhead. Lower the rate/duration if the link or remaining budget
+requires it. It is a paced diagnostic sample, not a peak-capacity benchmark.
+No warm-up is used for this pilot; steady-state tests need a separately
+budgeted ramp-up and measurement window. Do not add `-w` to an autotuning baseline.
 
 ```bash
 # When a source is bound, use it in both places: --route-source <source-ip>
-# and iperf3 -B <source-ip>.
-scripts/measure-window.sh --route-target <literal-peer-ip> --label p1-fwd -- \
-  iperf3 -c <literal-peer-ip> -p <port> -t 12 -O 2 -P 1 -J
-scripts/measure-window.sh --route-target <literal-peer-ip> --label p4-fwd -- \
-  iperf3 -c <literal-peer-ip> -p <port> -t 12 -O 2 -P 4 -J
-scripts/measure-window.sh --route-target <literal-peer-ip> --label p1-rev -- \
-  iperf3 -c <literal-peer-ip> -p <port> -t 12 -O 2 -P 1 -R -J
-scripts/measure-window.sh --route-target <literal-peer-ip> --label p4-rev -- \
-  iperf3 -c <literal-peer-ip> -p <port> -t 12 -O 2 -P 4 -R -J
+# and iperf3 -B <source-ip>. Add -R only when the critical direction requires it.
+scripts/measure-window.sh --route-target <literal-peer-ip> --label p1-pilot -- \
+  iperf3 -c <literal-peer-ip> -p <port> -t 5 -O 0 -P 1 -b 20M -J
 ```
+
+Do not automatically follow this with reverse/P4/other-peer runs. Select an
+additional test only to answer an unresolved directionality, flow or path
+question, within the remaining total budget. If P4 is needed, divide the
+intended aggregate paced rate across four streams because `-b` is per stream.
+Use [current-evidence.md](current-evidence.md) for escalation and stop rules.
 
 Record bitrate, retransmits, cwnd/RTT clues, startup behavior, single-flow vs multi-flow differences, qdisc drops/backlog deltas, and TCP retransmission counter deltas.
 

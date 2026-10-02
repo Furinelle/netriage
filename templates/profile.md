@@ -23,8 +23,9 @@ accidentally execute rollback-looking commands.
 
 ## Tests
 
-- Baseline (per peer: fixed endpoint tuple, PMTU, complete iperf3 P1/P4 fwd/rev JSON, retransmits, qdisc deltas):
+- Baseline (per peer: fixed endpoint tuple, PMTU, whole iperf3 JSON for selected runs only, direction/rate/duration, retransmits, qdisc deltas):
 - Idle/loaded RTT, application latency, CPU/steal and memory pressure:
+- Why each active test is needed; reused evidence, skipped tests and remaining uncertainty:
 - Test versions, warm-up, rate semantics and enforced budget/time limits:
 - Post-apply retest:
 

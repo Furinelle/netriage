@@ -5,6 +5,44 @@ documentation defines semantics; operator blogs supply hypotheses to reproduce
 on the target workload. Check the running distribution's kernel/backports and
 tool versions before using an option from newer documentation.
 
+## Traffic-saving test selection
+
+Use the least traffic that can answer the current question. This is a local
+netriage operating policy, not a kernel recommendation or permission to test.
+
+1. Reuse recent samples with matching route, peer, protocol and load context;
+   do not repeat a full baseline merely because a new agent or turn started.
+   Observe existing service traffic, socket/counter deltas and application
+   behavior before generating traffic. Expired or mismatched samples remain
+   background evidence only.
+2. If active testing is needed, start with one durable peer, the user-critical
+   direction, P1, a low paced rate and a short window. Without a supplied budget,
+   plan at most **64 MiB per host for the initial diagnosis**, including retries
+   and verification; a smaller user budget takes precedence. This is a planning
+   ceiling, not an enforced quota or a new grant of authorization. Keep room
+   for protocol overhead and any final retest. Do not reset it per peer or turn.
+3. A 5-second paced pilot can check reachability and gross trouble, but cannot
+   establish peak capacity, steady-state long-RTT TCP performance or a policer
+   knee. Select a rate within the known link/test budget; omit warm-up only for
+   this explicitly labelled pilot. If the next decision needs steady state,
+   budget sufficient ramp-up and measurement rather than drawing a conclusion
+   from an artificially short run.
+4. Add a reverse run only for directionality; P4 only for a single-flow/CPU
+   question; another peer only to distinguish peer/path from host limits. Raise
+   rate/duration only when the prior result leaves that decision unresolved.
+   Repeat failed connections at most once after investigating the failure;
+   do not rotate through public ports or peers automatically.
+5. Leave full-speed probes, complete P1/P4 × forward/reverse matrices, bidirectional
+   load and policer sweeps off by default. A necessary escalation must fit the
+   existing scope/budget or obtain approval for the specific additional cost.
+   A scan range should follow existing observations; repeat/refine suspected
+   transitions, not every clean point. Stop if the peer cannot resolve the
+   question, results are already sufficient, or the remaining budget is too low.
+6. After a change, rerun only the affected critical-path test plus required
+   service checks. Reuse the baseline; do not repeat unrelated directions or
+   the entire peer inventory. Report actual bytes, skipped tests and the
+   uncertainty left by the smaller test, without claiming unmeasured capacity.
+
 ## Test cost and sample validity
 
 Record client/server `iperf3 --version`. TCP `-b` defaults to unlimited; with
@@ -27,7 +65,9 @@ the scan beyond the approved scope. RX+TX includes unrelated service traffic
 and may differ from the provider's billing rules; label GB versus GiB explicitly.
 `measure-window.sh` observes a completed window; it is not a live quota guard.
 
-Keep P1/P4 and directions separate. Repeated A/B/A runs should keep the same
+For the tests actually selected, keep P1/P4 and directions separate. Use
+repeated A/B/A only when a noisy comparison or proposed persistent change
+needs corroboration; these runs should keep the same
 endpoint tuple, tool options, time window and background load. Report receiver
 goodput, sender retransmits, per-core CPU/steal, idle/loaded RTT and actual
 application startup/transfer behavior. A result that trades application tail

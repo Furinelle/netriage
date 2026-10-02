@@ -14,9 +14,10 @@ then obtain approval before persistent changes unless the current session alread
 - Bandwidth / RTT class (source: known port speed | speedtest | measured):
 - PMTU findings:
 - Fixed endpoint tuple per durable peer (literal IP, family, explicit or kernel-selected source IP, egress NIC, port):
-- iperf3 results per durable peer (complete P1/P4 JSON, forward/reverse, retransmits):
+- iperf3 results per durable peer (whole JSON for selected runs only, direction/rate/duration, retransmits):
 - qdisc drop/backlog and TCP counter deltas during test windows:
 - Idle/loaded RTT, application startup/tail latency, per-core CPU/steal and memory pressure:
+- Why each active test is needed; reused evidence, skipped tests and remaining uncertainty:
 - Test versions, warm-up, per-stream/aggregate rate, retry/step/time limits and budget stop:
 - Bottleneck interpretation:
 - Candidate derivation ledger (host role + separate socket workload passed to `scripts/derive-candidates.py`):

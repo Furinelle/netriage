@@ -131,12 +131,12 @@ For arithmetic without touching a host:
 ```bash
 python3 scripts/derive-candidates.py \
   --bandwidth-mbps 500 --rtt-ms 150 --ram-mib 1024 --concurrency 8 --workload proxy \
-  --page-size 4096 \
-  --sweep-from 450 --sweep-to 600 --sweep-step 25 \
-  --sweep-duration 12 --sweep-omit 2 --sweep-repeats 3
+  --page-size 4096
 ```
 
-The helper includes the configured warm-up at the aggregate shaper rate. Its
+This example computes buffers only and sends no traffic. Add sweep inputs only
+when a specific scan is justified; do not treat the calculator's defaults as
+a prescribed scan duration or test plan. The helper includes the configured warm-up at the aggregate shaper rate. Its
 payload estimate excludes baseline, reverse tests, verification, extra retries
 and protocol overhead, and does not enforce a quota.
 
@@ -167,6 +167,12 @@ Important boundaries:
   [Probe and subprocess handling](https://github.com/Kylin010/tcpfit/blob/38fbf5af30daf87735f2ffbc5e0905033ee2b86e/tcpfit.sh#L2570-L2657),
   [wizard refusal](https://github.com/Kylin010/tcpfit/blob/38fbf5af30daf87735f2ffbc5e0905033ee2b86e/tcpfit.sh#L4091-L4126),
   [cancelled verification](https://github.com/Kylin010/tcpfit/blob/38fbf5af30daf87735f2ffbc5e0905033ee2b86e/tcpfit.sh#L4261-L4274).
+
+Netriage leaves automatic full-speed probes and sweeps off by default. First
+use passive evidence or a paced critical-path pilot as described in
+[current-evidence.md](current-evidence.md). Escalate only for an unresolved
+policer question; scan the narrowest supported range and repeat/refine suspected
+transitions instead of repeating every clean point.
 
 Netriage must obtain `test_budget_gb`, quota/billing window and peak constraints
 before the first full-speed test. Include all phases and a retry allowance,
