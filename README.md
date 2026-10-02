@@ -14,8 +14,10 @@
 
 - [`Madhatter2099/TCP-Optimize`](https://github.com/Madhatter2099/TCP-Optimize)（`tcp.sh` v2.0 完整审阅 + v2.1 增补审阅）
 - [`Eric86777/vps-tcp-tune`](https://github.com/Eric86777/vps-tcp-tune)（`net-tcp-tune.sh` v5.4.4 审阅；2026-09-06 复查至 **v5.4.8**：菜单 3 / buffer 未变，v5.4.7 起 ARM64 不再装 XanMod/BBRv3）
-- [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit)（v0.3.8 / `5671da0` 方法审阅 + 2026-09-06 **v0.5.7** / `1163c20` 增量审阅：吸收 BDP/RAM 推导账本、测试流量预算和 policer 拐点实验方法，不运行其自动调优）
+- [`Kylin010/tcpfit`](https://github.com/Kylin010/tcpfit)（2026-10-02 复查 **v0.5.9** / `38fbf5a`：吸收有界扫描、样本质量与路由持久化经验，核对流量预算和 qdisc 恢复限制，不运行其自动调优）
 - [`ike-sh/bbrv3-lite`](https://github.com/ike-sh/bbrv3-lite)（v8.0.3 工作流交叉核验：吸收路径冻结、样本质量与 fail-closed 回滚，不引入其一键控制面）
+
+网络调优经验另交叉核对了 Linux 内核文档、ESnet、Cloudflare 工程博客与 Red Hat 文档；来源、适用条件和不应照搬的参数见 [`references/current-evidence.md`](references/current-evidence.md)。
 
 > 这个仓库不是“一键复制 sysctl 参数”的清单，也不是 `curl | bash` 包装器。它更像是一套给 AI 运维 agent 使用的工作流：先问清楚链路，再检查，再测试，再给出推荐配置，最后由用户决定是否应用。
 
@@ -42,7 +44,7 @@
 - iperf3 的重传是否和本机 qdisc drop / backlog 对得上
 - 是否真的需要 BBR、fq、buffer、MTU、HTB/TBF 或 qos-agent
 - 是否真的需要 IPv4 优先、conntrack 扩容、RPS/RFS、MSS Clamp、initcwnd 或全局文件句柄扩容
-- 写了 `default_qdisc=fq` 之后，**live** 根 qdisc 是否真的变成了 `fq`
+- 写了 `default_qdisc=fq` 之后，**live** qdisc/叶子队列是否正确使用 `fq`，以及是否保留了 `mq` 拓扑
 
 ## 核心原则
 
@@ -186,7 +188,7 @@ agent 不会一次抛出十几个问题，而是分层询问：
 7. 按落地 / 线路 / 中转（及出口/Web）解释结果；用 `scripts/derive-candidates.py --page-size <target> --concurrency <expected> --workload <proxy|bulk|mixed>` 输出 BDP、内存/并发上限和截断原因；不要把 host role 硬映射成 workload。
 8. 只有在 nearby peer 足够快、拐点可重复且 qdisc 能精确恢复时，才设计 policer sweep；无稳定 knee 就不整形。
 9. 给出推荐配置和不改项。
-10. 等用户确认。
+10. 没有适用的既有授权时，等用户确认；不重复索取同一授权。
 11. 应用前以 `ROUTE_TARGET=<literal-peer-ip>` 备份并处理 sysctl 冲突；服务绑定 source IP 时另加 `ROUTE_SOURCE=<bound-source-ip>`。需要 `fq` 时同时处理 live qdisc 与持久化。
 12. 应用后验证 SSH、关键服务、live 参数，并写 profile 与最终报告。
 
@@ -214,6 +216,16 @@ agent 不会一次抛出十几个问题，而是分层询问：
 **为什么推荐配置里有很多"不改"项？** 不改也是结论。例如 PMTU 干净就不动 MTU；本机 qdisc 无 drop 的高重传不该用限速掩盖。
 
 ## 实战经验更新
+
+2026-10-02 基于 tcpfit v0.5.9 和工程资料更新：
+
+- **有界测试**：上游 50 GB 只是确认阈值；第一次探测前就需预算与停止条件。预算包含 `iperf3 -O` 预热、重复与验证；`-P` 下的 `-b` 按每流计速，HTB 总速率不重复乘流数。计算器新增 `--sweep-omit`，估算器不承担硬配额控制。
+- **分层诊断**：同时看吞吐、空闲/负载 RTT、应用首包/尾延迟、CPU/steal、socket 和内存压力。先区分应用慢读、接收窗口、NIC/softnet、路径及 provider policer，再选参数。
+- **缓冲区语义**：区分 TCP 自动调节与应用显式 socket buffer；保留合理默认值，只调整证据支持的上限。RAM/4 ÷ 并发是候选，不能忽略双向内存、代理双腿、cgroup 和其他服务。
+- **旧建议过滤**：不搬用 Cloudflare 的 512 MiB/custom patch 或 ESnet 的 10G/100G 参数；`tcp_adv_win_scale` 自 Linux 6.6 起废弃。BBR 版本查实际内核来源，不凭版本号或名称猜测。
+- **持久化与回滚**：保留 `mq`；按实际路由/配置管理器验证无 `via`、DHCP/PPP 场景。新增 initcwnd 产物纳入检查和备份；未获准重启/重连时明确标注持久化未实测。
+- **按需加载**：保留本机已有的简洁 `SKILL.md`，详细流程放到 `references/operations.md`，技术依据按场景读取。
+
 
 2026-09-06 参考 tcpfit v0.5.7 与同类测量工具后更新：
 
@@ -247,11 +259,11 @@ agent 不会一次抛出十几个问题，而是分层询问：
 
 - `qdisc_save` 只保存类型（`mq` 另记叶子 kind），不能恢复 HTB class/filter/自定义参数
 - v0.3.8 自动 sweep 的临时 HTB 遗留路径已于 v0.5.4 修复，但**不**代表 classful qdisc 可精确回滚
-- snapshot 中 route/qdisc 只是注释，rollback 不能据此精确还原
-- 固定 150ms RTT、4 KiB page 假设、`0.1%`/1448 MSS loss proxy、固定 qdisc 参数、全套 32 项 sysctl、CLI 的 `initcwnd 32`
-- v0.5.7 菜单默认有 opt-out telemetry；netriage 不执行它，用户坚持运行时须披露并以 `TCPFIT_NO_TELEMETRY=1` 禁用，除非明确同意该请求
+- qdisc snapshot 仍不是可执行的拓扑恢复；v0.5.9 虽改善路由 token 保留和错误传播，仍需独立的精确回滚
+- 默认 150ms RTT、计算/显示均假设 4 KiB page、`0.1%`/1448 MSS loss proxy、固定部分 qdisc 参数、整套 sysctl 和 CLI 的 `initcwnd 32` 不能直接通用化
+- v0.5.9 保留菜单 opt-out telemetry；netriage 不执行它，用户坚持运行时须披露并以 `TCPFIT_NO_TELEMETRY=1` 禁用，除非明确同意该请求
 
-完整审阅见 [`references/tcpfit-review.md`](references/tcpfit-review.md)。方法基线：v0.3.8 / `5671da0`；若用户明确要跑上游本体，pin **v0.5.7** / `1163c20`，并校验发布包 SHA-256。
+完整静态审阅见 [`references/tcpfit-review.md`](references/tcpfit-review.md)。若用户明确要跑上游本体，pin **v0.5.9** / `38fbf5a` 并校验其中记录的 SHA-256；新版 guard 不等于硬预算或完整 qdisc 回滚。
 
 ### Madhatter2099/TCP-Optimize
 

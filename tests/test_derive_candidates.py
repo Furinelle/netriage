@@ -122,6 +122,17 @@ class DeriveCandidatesTests(unittest.TestCase):
         self.assertEqual(report.sweep_step_count, 3)
         self.assertEqual(report.sweep_payload_estimate_gib, 1.397)
 
+    def test_omitted_warmup_still_consumes_traffic(self):
+        report = CALCULATOR.derive(args_for(
+            "--sweep-from", "100", "--sweep-to", "300", "--sweep-step", "100",
+            "--sweep-duration", "10", "--sweep-omit", "2", "--sweep-repeats", "2",
+        ))
+        self.assertEqual(report.sweep_omit_seconds, 2)
+        self.assertEqual(report.sweep_payload_estimate_gib, 1.676)
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                args_for("--sweep-omit", "-1")
+
 
 if __name__ == "__main__":
     unittest.main()

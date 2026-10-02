@@ -165,11 +165,16 @@ systemctl is-enabled mss-clamp.service 2>/dev/null
 ls -la /etc/sysctl.d/99-tcpfit.conf /etc/modules-load.d/tcpfit-bbr.conf \
   /etc/systemd/system/tcpfit-qdisc.service /usr/local/sbin/tcpfit-qdisc.sh \
   /etc/networkd-dispatcher/routable.d/50-tcpfit-initcwnd \
+  /etc/ppp/ip-up.d/50-tcpfit /usr/local/sbin/tcpfit-initcwnd.sh \
+  /etc/systemd/system/tcpfit-initcwnd.service \
+  /etc/systemd/network/*.network.d/50-tcpfit-initcwnd.conf \
   /var/lib/tcpfit /var/lib/tcpfit/archives /var/lib/tcpfit/initcwnd.owned \
+  /var/lib/tcpfit/initcwnd.vals \
   /var/lib/tcpfit/no-telemetry /var/lib/tcpfit/stats.json /var/lib/tcpfit/swapfile.owned \
   /usr/local/bin/tcpfit /etc/sysctl.d/99-nettune.conf \
   /etc/systemd/system/nettune-qdisc.service /var/lib/nettune 2>/dev/null
 systemctl is-enabled tcpfit-qdisc.service 2>/dev/null
+systemctl is-enabled tcpfit-initcwnd.service 2>/dev/null
 grep -n 'precedence ::ffff:0:0/96' /etc/gai.conf 2>/dev/null
 # iptables-save only walks already-loaded tables; a plain `iptables -t mangle -S`
 # would auto-load the mangle module and break the read-only promise

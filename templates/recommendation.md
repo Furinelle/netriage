@@ -1,8 +1,8 @@
 # Tuning Recommendation — <host alias> (<date>)
 
-Skeleton for the recommendation bundle required by SKILL.md ("Recommendation
+Skeleton for the recommendation bundle in references/operations.md ("Recommendation
 Before Application Gate"). Fill every section, write in the user's language,
-then STOP and wait for explicit approval before any persistent change.
+then obtain approval before persistent changes unless the current session already authorizes the exact scope.
 
 ## 1. Evidence summary
 
@@ -16,6 +16,8 @@ then STOP and wait for explicit approval before any persistent change.
 - Fixed endpoint tuple per durable peer (literal IP, family, explicit or kernel-selected source IP, egress NIC, port):
 - iperf3 results per durable peer (complete P1/P4 JSON, forward/reverse, retransmits):
 - qdisc drop/backlog and TCP counter deltas during test windows:
+- Idle/loaded RTT, application startup/tail latency, per-core CPU/steal and memory pressure:
+- Test versions, warm-up, per-stream/aggregate rate, retry/step/time limits and budget stop:
 - Bottleneck interpretation:
 - Candidate derivation ledger (host role + separate socket workload passed to `scripts/derive-candidates.py`):
 

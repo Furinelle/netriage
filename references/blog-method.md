@@ -2,7 +2,7 @@
 
 Source: Lide, “让 AI 帮你调 VPS 网络：中转机和落地机 TCP 调优笔记”, iBytebox, 2026-07-07, https://blog.ibytebox.com/posts/ai-agent-vps-tcp-tuning/. This file is a concise adaptation for agent reuse, not a verbatim copy.
 
-Follow-up status: the article's promised qos-agent sequel (dynamic per-port/per-peer/per-source shaping) was still unpublished as of 2026-09-06; re-check the blog before assuming new upstream guidance exists.
+For the 2026-10-02 cross-check against Linux/ESnet documentation and Cloudflare/Red Hat experience, read [current-evidence.md](current-evidence.md). The original article remains methodological background, not a current kernel parameter specification.
 
 ## Input Contract
 
@@ -74,8 +74,11 @@ find /sys/class/net/<dev>/queues -maxdepth 2 \
 Run peers sequentially. Freeze each sample to a literal peer IP, IP family, source IP, egress NIC, and port; when a service binds a source, use `ip route get <literal-peer-ip> from <source-ip>` before and after the window, and discard a sample whose route tuple changes. Preserve each `iperf3 -J` document whole — never combine sender/receiver fields from different rounds. If the peer inventory includes soon-to-expire or throwaway VPSs, test them only when they help diagnose reachability; base persistent sysctl/qdisc/MTU/shaping decisions on the durable peers that match the user's real traffic path.
 
 Before a bandwidth probe or shaping sweep, estimate the lower-bound transfer
-volume and compare it with `test_budget_gb`; include retries, baseline, reverse,
-and verification overhead. A nearby high-capacity peer answers “where is the VPS
+volume and compare it with `test_budget_gb`; include warm-up (`-O`), retries, baseline, reverse,
+and verification overhead. Specify GB/GiB, retry/step/time ceilings and a
+remaining-budget stop before the first probe. `-b` applies per stream with `-P`;
+an aggregate HTB rate is counted once. The calculator accepts `--sweep-omit`
+for warm-up but does not enforce a quota. A nearby high-capacity peer answers “where is the VPS
 port/policer knee,” while durable business-path peers answer “what improves the
 real service.” Keep those roles separate. For the detailed tcpfit-derived sweep
 method and its qdisc-restoration limits, read `tcpfit-review.md`.
@@ -92,7 +95,7 @@ for s in 1472 1452 1432 1412 1392 1352 1332 1312 1292; do
 done
 ```
 
-iperf3 pattern; adapt direction to user-critical path:
+iperf3 pattern; run only the approved subset and adapt direction to the user-critical path. Each `-t 12 -O 2` example sends for about 14 seconds; these TCP commands are uncapped and require a capacity-based budget first. For a paced test, budget `-P × -b`; do not add `-w` to the autotuning baseline:
 
 ```bash
 # When a source is bound, use it in both places: --route-source <source-ip>
@@ -157,20 +160,20 @@ Landing hosts: if they terminate or re-originate TCP, BBR/fq/buffers/notsent/TFO
 
 Protocol × knob impact (from the source article):
 
-| Traffic type | BBR/fq | TCP buffers | MTU/PMTU |
-| --- | --- | --- | --- |
-| TCP endpoint (SS2022 TCP, VLESS REALITY, web TLS) | direct | direct | direct |
-| Kernel-forwarded TCP (nftables/L4 relay) | indirect | indirect | direct |
-| UDP/QUIC (HY2, TUIC, WireGuard) | indirect (pacing/queues) | none | direct |
+| Traffic type | Linux TCP congestion control | qdisc | TCP socket buffers | MTU/PMTU |
+| --- | --- | --- | --- | --- |
+| TCP endpoint, including userspace relay TCP legs | direct | yes | direct | direct |
+| Kernel-forwarded TCP (nftables DNAT) | no local TCP endpoint | yes | none for forwarded flow | direct |
+| UDP/QUIC (HY2, TUIC, WireGuard) | none for outer transport | yes | none for outer transport | direct |
 
 Symptom → role hint: high-concurrency forwarding loss and queue backlog point at the relay side; slow page starts, video stalls, and long-RTT window growth point at the landing/endpoint side.
 
 ## Candidate Tuning Decisions
 
-- BBR/fq: prefer when available and appropriate; use bbr3 only if exposed by kernel. After recommending `default_qdisc=fq`, verify the **live** root qdisc and plan reboot persistence (`tc qdisc replace` + systemd/networkd).
-- Buffers: estimate from bandwidth-delay product, memory, host role, **explicit expected concurrency**, socket workload, and service_region. Rough BDP bytes ≈ `Mbps × RTT_ms × 125`. Compare 2×BDP with tcpfit v0.5.7's 2×BDP+2MiB candidate, then cap from an explicit RAM/4 budget divided by concurrency. Pass `getconf PAGE_SIZE` from the target to `scripts/derive-candidates.py --workload <proxy|bulk|mixed>`; `tcp_mem` is pages. Do not infer workload from 落地 / 线路 / 中转, and do not produce an endpoint-buffer candidate for a pure kernel forwarder without a terminating TCP workload. Use Asia/overseas ladders in `vps-tcp-tune-review.md` as candidates (overseas often larger, commonly capped near 64 MiB); small RAM hosts stay conservative. Prefer known port speed over public speedtests when they disagree. The source article's role tiers are upper-bound candidates: conservative caps for 100M relays; 64–128 MiB for 1G relay/landing when RTT and memory support it; 128–256 MiB only for high-bandwidth long-RTT landing hosts with BDP and retransmit evidence. Where this clashes with the one-click 64 MiB overseas cap, prefer the smaller value unless measured BDP, ample free RAM, and clean loss data justify more.
+- BBR/fq: prefer when available and appropriate; verify the actual implementation from kernel/package provenance, not an assumed `bbr3` name. After recommending `default_qdisc=fq`, verify the **live** topology and plan owner-aware persistence; preserve `mq` and its eligible leaves.
+- Buffers: estimate from bandwidth-delay product, memory, host role, **explicit expected concurrency**, socket workload, and service_region. Rough BDP bytes ≈ `Mbps × RTT_ms × 125`. Compare 2×BDP with tcpfit v0.5.9's 2×BDP+2MiB candidate, then cap from an explicit RAM/4 budget divided by concurrency. Pass `getconf PAGE_SIZE` from the target to `scripts/derive-candidates.py --workload <proxy|bulk|mixed>`; `tcp_mem` is pages. Do not infer workload from 落地 / 线路 / 中转, and do not produce an endpoint-buffer candidate for a pure kernel forwarder without a terminating TCP workload. Use Asia/overseas ladders in `vps-tcp-tune-review.md` as candidates (overseas often larger, commonly capped near 64 MiB); small RAM hosts stay conservative. Prefer known port speed over public speedtests when they disagree. The source article's role tiers are upper-bound candidates: conservative caps for 100M relays; 64–128 MiB for 1G relay/landing when RTT and memory support it; 128–256 MiB only for high-bandwidth long-RTT landing hosts with BDP and retransmit evidence. Where this clashes with the one-click 64 MiB overseas cap, prefer the smaller value unless measured BDP, ample free RAM, and clean loss data justify more.
 - MTU: walk the decision chain in order — (1) is the public interface currently 1500; (2) is PMTU to durable peers clean; (3) is a tunnel/WireGuard/overlay/nested proxy in the path; (4) is the real protocol TCP or UDP/QUIC; (5) is there fragmentation/black-hole/retransmit/QUIC-loss evidence. Keep 1500 when clean. Consider 1450-1460 for mild tunnel/provider overhead, or 1400-1440 for nested encapsulation/consumer ISP/UDP paths, only with evidence. Prefer `tcp_mtu_probing` (TCP-only) over cargo-cult interface MTU 1440 when black holes are TCP-specific.
-- HTB/TBF: test practical stable uplink with a repeated ladder. A provider-policer knee may sit above unpaced goodput, but only a capable nearby peer and reproducible transition can establish that. Choose the highest cap that lowers retransmits/drops without harming critical throughput; improved short-connection/web/video startup behavior also counts in favor of a cap. Shaping must only affect the weak peer(s) — if healthy peers lose throughput, the cap is too low or the bottleneck is not local egress; raise or remove it. Keep fq as the child qdisc. “No observed knee” means no cap, not “use the scan ceiling.”
+- HTB/TBF: test practical stable uplink with a repeated ladder. A provider-policer knee may sit above unpaced goodput, but only a capable nearby peer and reproducible transition can establish that. Choose the highest cap that lowers retransmits/drops without harming critical throughput; improved short-connection/web/video startup behavior also counts in favor of a cap. For peer-specific bottlenecks, scope shaping to those peers. For an evidenced shared-egress policer, an approved aggregate cap may be appropriate; validate healthy peers and critical traffic, and raise/remove the cap if their regression outweighs the intended benefit. Keep fq as the child qdisc. “No observed knee” means no cap, not “use the scan ceiling.”
 - qos-agent: reserve for adaptive per-peer/per-port/per-source control; do not deploy by default.
 - IPv4 preference: compare real IPv4 and IPv6 service paths first. `/etc/gai.conf` changes libc address selection; it does not rewrite DNS responses. Do not permanently disable IPv6 as a default optimize step.
 - Conntrack: inspect whether the host actually traverses NAT/firewall conntrack and compare `nf_conntrack_count` with the limit. Do not derive table size from RAM alone or hardcode popular script values.
@@ -187,29 +190,10 @@ For a detailed audit of the ideas and failure modes in `Madhatter2099/TCP-Optimi
 
 1. Explain the planned change and measurements that justify it.
 2. Present exact recommended config before applying: proposed `/etc/sysctl.d/*.conf` content, any qdisc/systemd/MTU/qos-agent commands, rejected candidate knobs, risk/interruption notes, verification plan, and rollback plan.
-3. Stop for user approval unless the current user message explicitly says to apply the recommendation.
-4. After approval, take a full pre-change snapshot for the representative route — `ROUTE_TARGET=<literal-peer-ip> bash scripts/backup-snapshot.sh`; add `ROUTE_SOURCE=<bound-source-ip>` when the service binds a source, or inline:
-
-   ```bash
-   RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
-   backup=/root/network-tuning-$RUN_ID/pre-change
-   mkdir -p "$backup"
-   cp -a /etc/sysctl.conf /etc/sysctl.d /etc/security/limits.d /etc/gai.conf "$backup"/ 2>/dev/null || true
-   sysctl -a > "$backup/sysctl-a.txt" 2>/dev/null || true
-   tc -s qdisc show > "$backup/tc-qdisc.txt"
-   route_target=<representative-peer-literal-ip>
-   route_source=${ROUTE_SOURCE:-}
-   if [ -n "$route_source" ]; then ip -o route get "$route_target" from "$route_source"; else ip -o route get "$route_target"; fi > "$backup/ip-route-target.txt" 2>/dev/null || true
-   dev=$(awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' "$backup/ip-route-target.txt" | head -1)
-   tc -s qdisc show dev "$dev" > "$backup/tc-qdisc-egress.txt" 2>/dev/null || true
-   tc -s class show dev "$dev" > "$backup/tc-class-egress.txt" 2>/dev/null || true
-   tc -s filter show dev "$dev" > "$backup/tc-filter-egress.txt" 2>/dev/null || true
-   ip route show > "$backup/ip-route.txt"
-   iptables-save > "$backup/iptables-save.txt" 2>/dev/null || true
-   nft list ruleset > "$backup/nft-ruleset.txt" 2>/dev/null || true
-   ```
+3. Stop for user approval unless the current session already authorizes applying the recommendation.
+4. After approval, take a validated pre-change snapshot for the representative route with `ROUTE_TARGET=<literal-peer-ip> bash scripts/backup-snapshot.sh`; add `ROUTE_SOURCE=<bound-source-ip>` when the service binds a source. Include affected units/scripts and a planned-path manifest. A failed or incomplete snapshot blocks application; diagnostic command output alone is not an executable rollback. Use the authoritative qdisc/network owner for exact restoration.
 5. Write one consolidated sysctl.d file for active tuning; inventory and neutralize higher-priority conflicting drop-ins before apply.
-6. Apply with `sysctl -p <file>` and/or `sysctl --system`. If recommending live `fq`/MSS clamp/initcwnd, apply those explicitly and install persistence only when approved.
+6. Apply the approved drop-in with `sysctl -p <file>`. Use `sysctl --system` only when a full reload is authorized and the other files have been checked; it can activate unrelated pending settings. If recommending live `fq`/MSS clamp/initcwnd, apply those explicitly and install persistence only when approved.
 7. Confirm SSH and critical services still work.
 8. Read back effective sysctl/qdisc values, buffer bytes, and any route/RPS changes — including the live root qdisc on the egress interface, not just `net.core.default_qdisc`:
 

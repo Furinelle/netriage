@@ -16,15 +16,20 @@ fi
 
 test_root=$(mktemp -d)
 backup_roots=()
+networkd_fixture=
 cleanup() {
   local root
   rm -rf "$test_root"
+  [ -z "$networkd_fixture" ] || rm -rf "$networkd_fixture"
   for root in "${backup_roots[@]}"; do
     rm -rf "$root"
   done
 }
 trap cleanup EXIT
 mkdir -p "$test_root/bin"
+mkdir -p /etc/systemd/network
+networkd_fixture=$(mktemp -d /etc/systemd/network/netriage-test-XXXXXX.network.d)
+printf '[DHCPv4]\nInitialCongestionWindow=16\n' > "$networkd_fixture/50-tcpfit-initcwnd.conf"
 
 cat > "$test_root/bin/ip" <<'EOF'
 #!/bin/sh
@@ -70,6 +75,7 @@ PATH="$test_root/bin:$PATH" RUN_ID="$run_id" ROUTE_TARGET=203.0.113.9 ROUTE_SOUR
 test "$(cat "$backup/route-target.txt")" = "203.0.113.9"
 test "$(cat "$backup/route-source.txt")" = "192.0.2.10"
 test "$(cat "$backup/egress-dev.txt")" = "netriage-test0"
+cmp "$networkd_fixture/50-tcpfit-initcwnd.conf" "$backup$networkd_fixture/50-tcpfit-initcwnd.conf"
 grep -Fqx '203.0.113.9 via 192.0.2.1 dev netriage-test0 src 192.0.2.10' \
   "$backup/ip-route-target.txt"
 

@@ -1,6 +1,6 @@
 # Tuning Profile — target: /etc/sysctl.d/<name>.profile.md
 
-Skeleton for the profile written after a successful apply (SKILL.md workflow
+Skeleton for the profile written after a successful apply (references/operations.md workflow
 step 9). Write in the user's language; mask IPs and use peer aliases.
 
 When writing this file over SSH, use a QUOTED heredoc (`<<'EOF'`): unquoted
@@ -24,6 +24,8 @@ accidentally execute rollback-looking commands.
 ## Tests
 
 - Baseline (per peer: fixed endpoint tuple, PMTU, complete iperf3 P1/P4 fwd/rev JSON, retransmits, qdisc deltas):
+- Idle/loaded RTT, application latency, CPU/steal and memory pressure:
+- Test versions, warm-up, rate semantics and enforced budget/time limits:
 - Post-apply retest:
 
 ## Applied configuration
@@ -32,7 +34,7 @@ accidentally execute rollback-looking commands.
 - Chosen values with one-line reasoning each:
 - Candidate derivation inputs/output and the limiting cap (BDP / RAM / concurrency):
 - Live actions (tc replace, MSS clamp, RPS, initcwnd):
-- Persistence mechanism:
+- Persistence mechanism and live verification after route renewal/reboot (or explicitly unverified):
 
 ## Explicit non-changes
 

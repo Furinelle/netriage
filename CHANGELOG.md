@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-02
+
+### Changed
+
+- Reviewed tcpfit **v0.5.9** (`38fbf5af30daf87735f2ffbc5e0905033ee2b86e`) against v0.5.7; verified script SHA-256 `8331cc40950229a3280ce32406330a85b1a3d21ba398a4db3dc7e25c39783741`. Documented scan/refinement guards, inconclusive samples, gateway-less routes and initcwnd persistence, while distinguishing upstream reports from local validation.
+- Clarified that upstream's 50 GB confirmation is not a quota and follows initial probes; cancellation does not undo all base tuning. Retained exact qdisc restore requirements and telemetry opt-out; corrected the upstream 4 KiB assumption to cover calculation as well as display.
+- Incorporated the existing installed skill's concise entrypoint and operational reference. Added source-linked Linux, ESnet, Cloudflare and Red Hat guidance for socket/autotuning attribution, loaded latency, CPU/queue pressure, version-bound advice, protocol separation and owner-aware persistence.
+- Added `--sweep-omit` to payload estimates with regression coverage. Existing JSON keys remain compatible; the legacy v0.5.7 candidate key still represents the unchanged v0.5.9 formula. Estimates explicitly do not enforce a live quota.
+- Extended inspection/snapshot inventory for current tcpfit initcwnd scripts, units, PPP hooks and networkd drop-ins. Added a Linux regression check that an existing networkd drop-in is preserved.
+- Updated recommendation/profile fields for latency, CPU/memory, test limits and unverified persistence; reused session authorization rather than asking twice.
+
+
 ## 2026-09-06
 
 ### Added

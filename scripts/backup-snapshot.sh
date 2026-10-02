@@ -178,6 +178,10 @@ for f in /etc/systemd/system/bbr-optimize-persist.service \
          /etc/systemd/system/tcpfit-qdisc.service \
          /usr/local/sbin/tcpfit-qdisc.sh \
          /etc/networkd-dispatcher/routable.d/50-tcpfit-initcwnd \
+         /etc/ppp/ip-up.d/50-tcpfit \
+         /usr/local/sbin/tcpfit-initcwnd.sh \
+         /etc/systemd/system/tcpfit-initcwnd.service \
+         /etc/systemd/network/*.network.d/50-tcpfit-initcwnd.conf \
          /usr/local/bin/tcpfit \
          /etc/sysctl.d/99-nettune.conf \
          /etc/systemd/system/nettune-qdisc.service; do

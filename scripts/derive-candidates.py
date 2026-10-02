@@ -32,6 +32,13 @@ def positive_int(value: str) -> int:
     return parsed
 
 
+def nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
+
+
 @dataclass(frozen=True)
 class CandidateReport:
     bandwidth_mbps: float
@@ -53,6 +60,7 @@ class CandidateReport:
     tcp_mem_candidate_pages: tuple[int, int, int]
     tcp_mem_candidate_mib: tuple[float, float, float]
     sweep_step_count: int | None
+    sweep_omit_seconds: int
     sweep_payload_estimate_gib: float | None
     notes: tuple[str, ...]
 
@@ -120,7 +128,7 @@ def derive(args: argparse.Namespace) -> CandidateReport:
             sweep_rate_sum
             * 1_000_000
             // 8
-            * args.sweep_duration
+            * (args.sweep_duration + args.sweep_omit)
             * args.sweep_repeats
         )
         sweep_gib = round(payload_bytes / GIB, 3)
@@ -145,12 +153,14 @@ def derive(args: argparse.Namespace) -> CandidateReport:
         tcp_mem_candidate_pages=tcp_mem_pages,
         tcp_mem_candidate_mib=tcp_mem_mib,
         sweep_step_count=sweep_step_count,
+        sweep_omit_seconds=args.sweep_omit,
         sweep_payload_estimate_gib=sweep_gib,
         notes=(
             "Candidate math only; validate against real traffic, concurrency and memory pressure.",
             "tcp_mem values are pages; --page-size must come from the target host.",
-            "tcpfit v0.5.7's 2xBDP+2MiB value is a competing candidate, not the netriage selection.",
-            "Sweep estimate is payload only and excludes retries, protocol overhead, baseline and verification runs.",
+            "The legacy tcpfit_v0_5_7 key also represents v0.5.9's unchanged 2xBDP+2MiB candidate, not the netriage selection.",
+            "RAM/4 and workload defaults are heuristics; allow for send/receive memory, proxy legs, cgroups and other services.",
+            "Sweep estimate includes configured warm-up at the aggregate shaper rate; it excludes extra retries, protocol overhead, baseline and verification runs. It does not enforce a quota.",
         ),
     )
 
@@ -175,6 +185,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--sweep-to", type=positive_int)
     p.add_argument("--sweep-step", type=positive_int)
     p.add_argument("--sweep-duration", type=positive_int, default=12)
+    p.add_argument(
+        "--sweep-omit", type=nonnegative_int, default=0,
+        help="iperf3 -O warm-up seconds per run; included in traffic cost",
+    )
     p.add_argument("--sweep-repeats", type=positive_int, default=1)
     return p
 
