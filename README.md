@@ -54,6 +54,23 @@
 - 不默认跑满 P1/P4 × 正反向，不自动全速测速、遍历公共端点或做 policer sweep；只有明确未决问题才升级，预算是上限，不是必须用完的额度。
 - 证据足够就停，修改后只复测受影响路径。短时限速样本不能证明峰值带宽或长期稳定性；需要稳态数据时单独预算充分测量。
 
+## 离线比较已有证据
+
+已保存两轮 `measure-window.sh` 的完整标准输出时，可离线比较，无需 SSH、测速或修改网络：
+
+```bash
+python3 scripts/compare-evidence.py before.log after.log
+```
+
+- 每份日志只包含一个完整 `iperf3 -J` 对象，以及成功退出、稳定 route / tc topology 和未回退的计数器。采集脚本现在输出 `host_id=<hostname>`；它是采集主机的名称，并不独立核验硬件身份。重名主机需要先由操作者确认身份，不能仅因名称相同就认定是同一机器。
+- 只比较已知相同的主机标识、literal peer / port、IP family、实际 source / egress / route、TCP 方向、iperf3 版本、流数、块大小、时长、预热、TOS 和 pacing 配置（`target_bitrate` 与内核 `fqrate`，并核对 `start` 中的重复字段）。显式绑定源地址时，路由的 `from` 或 `src` 都必须与实际连接源地址相符。支持固定时长的单向 TCP；UDP/QUIC、双向测试和缺字段的旧日志明确不可比较。不要靠填默认值补齐缺失证据。
+- 输出 JSON 的 `receiver_throughput` 固定使用接收端 `end.sum_received.bits_per_second`，不会混用发送端速率、Mbps 或字节单位。基线为零时 `change_percent` 为 `null`。主机计数器只并列展示两轮 delta，包含同接口其他业务流量，不能当成端到端丢包率。
+- 报告保留两次采样时间、间隔秒数和接收端实际测量时长。只描述观测差值，不把相隔很久的样本或一次短测归因于某次调参，也不据此证明峰值带宽或长期稳定性。
+- 可比较时退出 `0`；证据缺失、不相容、截断、重复 JSON、失败或漂移时输出原因并退出 `3`，不输出百分比；参数和文件读取错误退出 `2`。原始文件不会修改。
+
+回归夹具 `tests/fixtures/iperf-window-before.log` 使用 iperf3 的 JSON 结构和采集脚本的文本格式，数值为离线构造数据，不是实测或推荐值。
+原生 pacing 和 `bidir` 字段核对自 [ESnet iperf 3.17.1 的输出实现](https://github.com/esnet/iperf/blob/3.17.1/src/iperf_api.c#L849-L946)。旧版本缺少这些证据时不推定为无限速或单向。
+
 ## 核心原则
 
 - 用户说 `tcp调优`、`进行TCP调优`、`VPS网络调优`、`BBR调优`、`网络优化`、`开启BBR`、`测速慢`/`高重传`排查等时，应自动使用这个 Skill。
@@ -106,7 +123,7 @@ git pull
 
 - 基础工具：`iproute2`（`ip`/`ss`/`tc`）、`sysctl`；主流 systemd 发行版（Debian/Ubuntu/RHEL 系）自带
 - 测试工具：`iperf3`（吞吐测试）、`tracepath` 或 `ping`（PMTU）、`ethtool`（可选）
-- 本地候选计算：Python 3（仅 `scripts/derive-candidates.py` 使用，不需要第三方包）；必须输入**目标机**的 `getconf PAGE_SIZE` 与预期并发，不能沿用运行 agent 的机器参数
+- 本地候选计算与离线比较：Python 3，不需要第三方包；候选计算必须输入**目标机**的 `getconf PAGE_SIZE` 与预期并发，不能沿用运行 agent 的机器参数
 - 装包本身属于变更：默认权限边界下 agent 会先征求同意再安装 iperf3；为测试临时放行的防火墙端口会在本轮结束时清理
 
 ## 触发方式
@@ -320,11 +337,12 @@ agent 不会一次抛出十几个问题，而是分层询问：
 │   ├── pmtu-probe.sh                # PMTU 阶梯探测（只读）
 │   ├── derive-candidates.py         # BDP / RAM÷并发 / tcpfit 竞争候选与 sweep 下界
 │   ├── measure-window.sh            # 单次测试前后 route + qdisc/class/filter delta
+│   ├── compare-evidence.py          # 离线比较已知相容的两轮 TCP 测量证据
 │   └── backup-snapshot.sh           # 对实际业务 route 的应用前全量快照
 ├── templates/
 │   ├── recommendation.md            # 推荐配置六段式模板
 │   └── profile.md                   # 调优 profile 模板
-├── tests/                           # 标准库候选计算与 Linux qdisc 回归测试
+├── tests/                           # 标准库候选计算、离线证据与 Linux qdisc 回归测试
 ├── agents/
 │   └── openai.yaml                  # Codex UI metadata
 ├── CHANGELOG.md                     # 更新日志

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-12
+
+- Added offline comparison of saved `measure-window.sh` logs with complete unidirectional TCP iperf3 JSON. Missing or incompatible host/path/test metadata, failed/drifting/reset windows, and truncated or duplicate JSON cannot produce percentage claims. Reports expose timestamps, observed receiver-rate differences and host-counter deltas without attributing causality.
+- Measurement logs now capture a hostname-based `host_id`; this is not independent hardware identity verification. Added synthetic-format fixtures and offline regression coverage; no live test or network mutation is needed.
+- Review follow-up: accept verified bound-source `from` routes as well as `src`, and require native `bidir` / kernel `fqrate` evidence with consistent duplicated pacing fields. Changed or unknown pacing cannot produce a percentage comparison.
+
 ## 2026-10-02
 
 ### Traffic-saving follow-up

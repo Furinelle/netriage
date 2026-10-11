@@ -45,6 +45,7 @@ status=$?
 set -e
 
 test "$status" -eq 3
+grep -Eq '^host_id=.+$' <<<"$output"
 grep -Fqx 'qdisc_before=qdisc mq 0: root' <<<"$output"
 grep -Fqx 'qdisc_after=qdisc mq 0: root' <<<"$output"
 grep -Fqx 'egress_dev=lo route_target=198.51.100.10 route_source=192.0.2.10' <<<"$output"

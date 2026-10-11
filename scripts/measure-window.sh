@@ -137,6 +137,7 @@ before_topology=$(tc_topology_checksum)
 started=$(date +%s)
 
 printf '===== netriage measurement: %s =====\n' "$label"
+printf 'host_id=%s\n' "$(hostname 2>/dev/null || echo '<unknown>')"
 printf 'egress_dev=%s route_target=%s route_source=%s\n' \
   "$dev" "$route_target" "${route_source:-<kernel-selected>}"
 printf 'route_before=%s\n' "${route_before:-<unknown>}"
