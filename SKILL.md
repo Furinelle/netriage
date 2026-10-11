@@ -28,4 +28,6 @@ Diagnose the actual traffic path and change only settings supported by measureme
 
 `scripts/inspect.sh` collects read-only state; `pmtu-probe.sh` probes PMTU; `measure-window.sh` captures route-bound counter deltas; `derive-candidates.py` computes workload/page-size/concurrency-aware candidates and traffic estimates; `backup-snapshot.sh` preserves the immediate pre-change state. Use the recommendation and profile templates when useful.
 
+`scripts/compare-evidence.py BEFORE.log AFTER.log` compares saved measurement windows offline. It rejects missing or mismatched host/path/test metadata; only complete fixed-duration, unidirectional TCP iperf3 samples are supported. Report observed differences, timestamps and their gap, not tuning causality. See the README for input requirements.
+
 Do not silently wrap or run third-party installers. Pin and inspect their side effects first. TCP test results do not establish UDP/QUIC performance; validate the actual protocol and durable business path.

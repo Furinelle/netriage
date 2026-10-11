@@ -1,0 +1,32 @@
+===== netriage measurement: paced-p1 =====
+host_id=relay-example
+egress_dev=eth0 route_target=198.51.100.20 route_source=<kernel-selected>
+route_before=198.51.100.20 via 192.0.2.1 dev eth0 src 192.0.2.10 cache expires 30sec
+qdisc_before=qdisc fq 8001: root
+{
+  "start": {
+    "connected": [{"socket": 5, "local_host": "192.0.2.10", "local_port": 41000, "remote_host": "198.51.100.20", "remote_port": 5201}],
+    "version": "iperf 3.17.1",
+    "timestamp": {"time": "Tue, 01 Sep 2026 00:00:00 GMT", "timesecs": 1788220800},
+    "test_start": {"protocol": "TCP", "num_streams": 1, "blksize": 131072, "omit": 2, "duration": 10, "bytes": 0, "blocks": 0, "reverse": 0, "tos": 0, "target_bitrate": 30000000}
+  },
+  "intervals": [],
+  "end": {
+    "sum_sent": {"start": 0, "end": 10, "seconds": 10, "bytes": 25000000, "bits_per_second": 20000000, "retransmits": 2},
+    "sum_received": {"start": 0, "end": 10, "seconds": 10, "bytes": 25000000, "bits_per_second": 20000000}
+  }
+}
+----- counter deltas -----
+duration_seconds=12 test_exit_status=0
+rx_bytes_delta=100000 tx_bytes_delta=31000000 total_interface_bytes_delta=31100000
+total_interface_gib_delta=0.0290
+tcp_retrans_segs_delta=2 tcp_out_segs_delta=22000
+qdisc_dropped_delta=0 qdisc_overlimits_delta=0 qdisc_requeues_delta=3
+softnet_dropped_delta=0 softnet_time_squeeze_delta=0
+qdisc_after=qdisc fq 8001: root
+route_after=198.51.100.20 via 192.0.2.1 dev eth0 src 192.0.2.10 cache expires 18sec
+route_tuple_unchanged=yes
+tc_topology_before_checksum=123456:25 tc_topology_after_checksum=123456:25
+tc_topology_unchanged=yes
+sample_valid=yes
+note=use a literal peer IP and preserve the complete iperf3 JSON sample; interface byte deltas include unrelated traffic
