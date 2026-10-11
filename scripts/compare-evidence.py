@@ -15,7 +15,7 @@ COUNTERS = (
     "qdisc_overlimits_delta", "qdisc_requeues_delta", "softnet_dropped_delta",
     "softnet_time_squeeze_delta",
 )
-TEST_FIELDS = ("num_streams", "blksize", "omit", "duration", "bytes", "blocks", "reverse", "tos", "target_bitrate")
+TEST_FIELDS = ("num_streams", "blksize", "omit", "duration", "bytes", "blocks", "reverse", "tos", "target_bitrate", "fqrate")
 
 
 def number(value, name):
@@ -79,9 +79,12 @@ def parse_sample(text):
             raise ValueError("iperf3 reported an error")
         start, summary = data["start"], data["end"]
         test = start["test_start"]
-        if test["protocol"] != "TCP" or test.get("bidirectional", 0) != 0 or any("bidir" in key for key in summary):
+        if test["protocol"] != "TCP" or number(test["bidir"], "test_start.bidir") != 0 or any("bidir" in key for key in summary):
             raise ValueError("only unidirectional TCP iperf3 samples are supported")
         settings = {key: number(test[key], f"test_start.{key}") for key in TEST_FIELDS}
+        if (number(start["fq_rate"], "start.fq_rate") != settings["fqrate"]
+                or number(start["target_bitrate"], "start.target_bitrate") != settings["target_bitrate"]):
+            raise ValueError("inconsistent iperf3 pacing metadata")
         if settings["reverse"] not in (0, 1) or not all(settings[k] > 0 for k in ("num_streams", "duration", "blksize")):
             raise ValueError("invalid iperf3 test settings")
         if settings["bytes"] or settings["blocks"]:
@@ -100,7 +103,9 @@ def parse_sample(text):
         bound_source = field("route_source")
         if bound_source != "<kernel-selected>" and str(ipaddress.ip_address(bound_source)) != source:
             raise ValueError("bound source differs from iperf3 source")
-        if not re.search(rf"\bdev\s+{re.escape(field('egress_dev'))}(?:\s|$)", route) or not re.search(rf"\bsrc\s+{re.escape(source)}(?:\s|$)", route):
+        route_sources = re.findall(r"\b(?:src|from)\s+(\S+)", route)
+        if (re.findall(r"\bdev\s+(\S+)", route) != [field("egress_dev")]
+                or not route_sources or any(str(ipaddress.ip_address(value)) != source for value in route_sources)):
             raise ValueError("route does not match the measured source/interface")
         received = summary["sum_received"]
         bitrate = number(received["bits_per_second"], "sum_received.bits_per_second")

@@ -29,6 +29,51 @@ def replace_json(text, edit):
 
 
 class CompareEvidenceTests(unittest.TestCase):
+    def test_explicit_bound_source_route_uses_from_without_src(self):
+        def bound(text):
+            return (text.replace("route_source=<kernel-selected>", "route_source=192.0.2.10")
+                    .replace("198.51.100.20 via", "198.51.100.20 from 192.0.2.10 via")
+                    .replace(" src 192.0.2.10", ""))
+
+        before, after = bound(BEFORE), bound(AFTER)
+        self.assertTrue(COMPARE.compare(before, after)["comparable"])
+        for text in (
+            after.replace("from 192.0.2.10", "from 192.0.2.11"),
+            after.replace("from 192.0.2.10", "from 192.0.2.10 src 192.0.2.11"),
+            after.replace("route_source=192.0.2.10", "route_source=192.0.2.11"),
+            after.replace(" from 192.0.2.10", ""),
+        ):
+            with self.subTest(route=text[:230]):
+                report = COMPARE.compare(before, text)
+                self.assertFalse(report["comparable"])
+                self.assertNotIn("receiver_throughput", report)
+
+    def test_kernel_fq_pacing_must_be_known_consistent_and_unchanged(self):
+        def paced(data, rate=20000000):
+            data["start"]["test_start"]["fqrate"] = rate
+            data["start"]["fq_rate"] = rate
+
+        self.assertTrue(COMPARE.compare(replace_json(BEFORE, lambda data: paced(data, 30000000)),
+                                       replace_json(AFTER, lambda data: paced(data, 30000000)))["comparable"])
+        for text in (
+            replace_json(AFTER, paced),
+            replace_json(AFTER, lambda data: data["start"]["test_start"].pop("fqrate")),
+            replace_json(AFTER, lambda data: data["start"].pop("fq_rate")),
+            replace_json(AFTER, lambda data: data["start"]["test_start"].update(fqrate=20000000)),
+            replace_json(AFTER, lambda data: data["start"].update(fq_rate=20000000)),
+            replace_json(AFTER, lambda data: data["start"].update(target_bitrate=20000000)),
+        ):
+            report = COMPARE.compare(BEFORE, text)
+            self.assertFalse(report["comparable"])
+            self.assertNotIn("receiver_throughput", report)
+
+    def test_native_bidir_flag_must_explicitly_be_zero(self):
+        for text in (
+            replace_json(AFTER, lambda data: data["start"]["test_start"].pop("bidir")),
+            replace_json(AFTER, lambda data: data["start"]["test_start"].update(bidir=1)),
+        ):
+            self.assertFalse(COMPARE.compare(BEFORE, text)["comparable"])
+
     def test_same_path_compares_receiver_rate_and_exposes_time_gap(self):
         report = COMPARE.compare(BEFORE, AFTER)
         self.assertTrue(report["comparable"])
